@@ -1,0 +1,1310 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>المبيعات - نظام إدارة المجوهرات</title>
+    <script>
+        (() => {
+            try {
+                const storedTheme = window.localStorage.getItem("goldshop_theme");
+                const systemTheme = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+                const theme = storedTheme === "light" || storedTheme === "dark" ? storedTheme : systemTheme;
+                document.documentElement.dataset.theme = theme;
+            } catch (_) {
+                document.documentElement.dataset.theme = "dark";
+            }
+        })();
+    </script>
+    <style>
+        :root,
+        :root[data-theme="dark"] {
+            color-scheme: dark;
+            --bg: #101112;
+            --surface: #181a1d;
+            --surface-soft: #202329;
+            --surface-strong: #0b0c0e;
+            --border: #30343b;
+            --text: #f3f4f6;
+            --muted: #a2a9b3;
+            --dim: #737b87;
+            --gold: #d8b24c;
+            --gold-soft: #3a3120;
+            --green: #5ec27f;
+            --green-soft: #173824;
+            --blue: #6ea8fe;
+            --blue-soft: #172a45;
+            --red: #ff7b7b;
+            --red-soft: #421f24;
+            --shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
+            --topbar-bg: rgba(11, 12, 14, 0.96);
+            --bottom-nav-bg: rgba(11, 12, 14, 0.97);
+            --row-hover: rgba(255, 255, 255, 0.025);
+            --hairline: rgba(255, 255, 255, 0.06);
+            --focus-ring: rgba(216, 178, 76, 0.14);
+            --on-gold: #15120a;
+            --radius: 8px;
+        }
+
+        :root[data-theme="light"] {
+            color-scheme: light;
+            --bg: #f5f7fa;
+            --surface: #ffffff;
+            --surface-soft: #eef2f6;
+            --surface-strong: #f8fafc;
+            --border: #d7dde5;
+            --text: #15181d;
+            --muted: #5c6673;
+            --dim: #808996;
+            --gold: #9a6a13;
+            --gold-soft: #fff3cf;
+            --green: #1f7a4d;
+            --green-soft: #e8f6ee;
+            --blue: #2563eb;
+            --blue-soft: #e9f0ff;
+            --red: #b4232f;
+            --red-soft: #fdecef;
+            --shadow: 0 12px 30px rgba(23, 31, 42, 0.08);
+            --topbar-bg: rgba(255, 255, 255, 0.94);
+            --bottom-nav-bg: rgba(255, 255, 255, 0.96);
+            --row-hover: rgba(15, 23, 42, 0.035);
+            --hairline: rgba(15, 23, 42, 0.08);
+            --focus-ring: rgba(154, 106, 19, 0.18);
+            --on-gold: #ffffff;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            min-height: 100%;
+            background: var(--bg);
+        }
+
+        body {
+            min-height: 100vh;
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+            font-size: 16px;
+            line-height: 1.5;
+            transition: background 0.18s ease, color 0.18s ease;
+        }
+
+        button,
+        input,
+        select {
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            background: var(--topbar-bg);
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(14px);
+        }
+
+        .topbar-inner {
+            width: min(1180px, 100%);
+            margin: 0 auto;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .brand {
+            min-width: 0;
+        }
+
+        .brand-title {
+            margin: 0;
+            color: var(--gold);
+            font-size: 1rem;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .brand-subtitle {
+            margin-top: 2px;
+            color: var(--dim);
+            font-size: 0.75rem;
+        }
+
+        .nav-tabs {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .nav-link {
+            min-height: 40px;
+            padding: 9px 12px;
+            border: 1px solid transparent;
+            border-radius: var(--radius);
+            color: var(--muted);
+            font-size: 0.9rem;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+        }
+
+        .nav-link:hover,
+        .nav-link.is-active {
+            background: var(--surface-soft);
+            border-color: var(--border);
+            color: var(--text);
+        }
+
+        .nav-icon {
+            width: 18px;
+            height: 18px;
+            color: var(--gold);
+            flex: 0 0 auto;
+        }
+
+        .header-tools {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 auto;
+        }
+
+        .language-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .language-link {
+            min-width: 38px;
+            min-height: 32px;
+            padding: 6px 8px;
+            border-radius: 6px;
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 850;
+            text-align: center;
+        }
+
+        .language-link.is-active {
+            background: var(--gold);
+            color: var(--on-gold);
+        }
+
+        .theme-toggle {
+            width: 42px;
+            height: 42px;
+            padding: 0;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--surface);
+            color: var(--text);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+        }
+
+        .theme-toggle:hover {
+            background: var(--surface-soft);
+            border-color: var(--gold);
+        }
+
+        .theme-icon {
+            width: 20px;
+            height: 20px;
+            color: var(--gold);
+        }
+
+        .theme-sun,
+        :root[data-theme="light"] .theme-moon {
+            display: none;
+        }
+
+        :root[data-theme="light"] .theme-sun {
+            display: block;
+        }
+
+        .content {
+            width: min(1180px, 100%);
+            margin: 0 auto;
+            padding: 18px 16px 92px;
+            flex: 1;
+        }
+
+        .page-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .page-title {
+            margin: 0;
+            color: var(--text);
+            font-size: 1.8rem;
+            font-weight: 850;
+            line-height: 1.25;
+        }
+
+        .page-kicker {
+            margin-top: 5px;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .toolbar {
+            margin-bottom: 16px;
+            padding: 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 10px;
+            align-items: end;
+        }
+
+        .field {
+            min-width: 0;
+        }
+
+        .field label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--muted);
+            font-size: 0.76rem;
+            font-weight: 750;
+        }
+
+        .input,
+        .select {
+            width: 100%;
+            min-height: 42px;
+            padding: 9px 10px;
+            background: var(--surface-strong);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .input:focus,
+        .select:focus {
+            border-color: var(--gold);
+            box-shadow: 0 0 0 3px var(--focus-ring);
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            min-height: 42px;
+            padding: 9px 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--surface-soft);
+            color: var(--text);
+            font-weight: 800;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: transform 0.12s ease, border-color 0.18s ease, background 0.18s ease;
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+        }
+
+        .btn-primary {
+            background: var(--gold);
+            border-color: var(--gold);
+            color: var(--on-gold);
+        }
+
+        .btn-ghost {
+            background: transparent;
+        }
+
+        .btn[disabled] {
+            cursor: not-allowed;
+            opacity: 0.58;
+        }
+
+        .btn-icon {
+            width: 18px;
+            height: 18px;
+            flex: 0 0 auto;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .metric-card {
+            min-height: 82px;
+            padding: 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .metric-label {
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 750;
+        }
+
+        .metric-value {
+            color: var(--text);
+            font-size: 1.15rem;
+            font-weight: 850;
+            overflow-wrap: anywhere;
+        }
+
+        .data-panel {
+            overflow: hidden;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+
+        .table-scroll {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        .data-table {
+            width: 100%;
+            min-width: 900px;
+            border-collapse: collapse;
+            text-align: right;
+        }
+
+        [dir="ltr"] .data-table {
+            text-align: left;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+
+        .data-table th {
+            background: var(--surface-strong);
+            color: var(--muted);
+            font-size: 0.75rem;
+            font-weight: 850;
+            white-space: nowrap;
+        }
+
+        .data-table td {
+            color: var(--text);
+            font-size: 0.88rem;
+        }
+
+        .data-table tr:hover td {
+            background: var(--row-hover);
+        }
+
+        .cell-muted {
+            color: var(--muted);
+        }
+
+        .cell-dim {
+            color: var(--dim);
+        }
+
+        .value-positive {
+            color: var(--green);
+            font-weight: 850;
+        }
+
+        .value-info {
+            color: var(--blue);
+            font-weight: 850;
+        }
+
+        .value-warning {
+            color: var(--gold);
+            font-weight: 850;
+        }
+
+        .value-danger {
+            color: var(--red);
+            font-weight: 850;
+        }
+
+        .badge {
+            display: inline-flex;
+            max-width: 100%;
+            min-height: 26px;
+            align-items: center;
+            padding: 4px 8px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--surface-soft);
+            color: var(--muted);
+            font-size: 0.75rem;
+            font-weight: 800;
+            overflow-wrap: anywhere;
+        }
+
+        .badge-sale {
+            background: var(--gold-soft);
+            border-color: rgba(216, 178, 76, 0.35);
+            color: var(--gold);
+        }
+
+        .badge-payment {
+            background: var(--blue-soft);
+            border-color: rgba(110, 168, 254, 0.35);
+            color: var(--blue);
+        }
+
+        .badge-paid {
+            background: var(--green-soft);
+            border-color: rgba(94, 194, 127, 0.35);
+            color: var(--green);
+        }
+
+        .badge-debt {
+            background: var(--red-soft);
+            border-color: rgba(255, 123, 123, 0.35);
+            color: var(--red);
+        }
+
+        .mobile-list {
+            display: none;
+            gap: 10px;
+        }
+
+        .data-card {
+            padding: 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .card-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .card-title {
+            margin: 0;
+            color: var(--text);
+            font-size: 1rem;
+            font-weight: 850;
+            overflow-wrap: anywhere;
+        }
+
+        .card-subtitle {
+            margin-top: 3px;
+            color: var(--muted);
+            font-size: 0.78rem;
+        }
+
+        .card-lines {
+            display: grid;
+            gap: 8px;
+        }
+
+        .info-line {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            padding-top: 8px;
+            border-top: 1px solid var(--hairline);
+        }
+
+        .info-label {
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 750;
+        }
+
+        .info-value {
+            color: var(--text);
+            text-align: left;
+            direction: ltr;
+            font-size: 0.86rem;
+            font-weight: 760;
+            overflow-wrap: anywhere;
+        }
+
+        [dir="ltr"] .info-value {
+            text-align: right;
+        }
+
+        .state-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 70px;
+            padding: 16px;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .spinner {
+            width: 22px;
+            height: 22px;
+            border: 3px solid rgba(216, 178, 76, 0.22);
+            border-top-color: var(--gold);
+            border-radius: 999px;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .load-more-wrap {
+            display: flex;
+            justify-content: center;
+            padding: 16px 0 0;
+        }
+
+        .bottom-nav {
+            position: fixed;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 30;
+            display: none;
+            background: var(--bottom-nav-bg);
+            border-top: 1px solid var(--border);
+            backdrop-filter: blur(14px);
+        }
+
+        .bottom-nav-inner {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 6px;
+            padding: 8px 12px;
+        }
+
+        .bottom-link {
+            min-height: 48px;
+            border-radius: var(--radius);
+            color: var(--muted);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            font-size: 0.72rem;
+            font-weight: 800;
+        }
+
+        .bottom-link.is-active {
+            background: var(--surface-soft);
+            color: var(--text);
+        }
+
+        .bottom-link svg {
+            width: 19px;
+            height: 19px;
+            color: var(--gold);
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @media (max-width: 860px) {
+            .topbar-inner {
+                padding: 10px 12px;
+            }
+
+            .nav-tabs {
+                display: none;
+            }
+
+            .language-switch {
+                margin-inline-start: auto;
+            }
+
+            .header-tools {
+                margin-inline-start: auto;
+            }
+
+            .content {
+                padding: 16px 12px 92px;
+            }
+
+            .page-header {
+                display: block;
+            }
+
+            .page-title {
+                font-size: 1.45rem;
+            }
+
+            .filter-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .field-search,
+            .field-full,
+            .actions {
+                grid-column: 1 / -1;
+            }
+
+            .actions {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .data-panel {
+                display: none;
+            }
+
+            .mobile-list {
+                display: grid;
+            }
+
+            .bottom-nav {
+                display: block;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                font-size: 15px;
+            }
+
+            .brand-title {
+                font-size: 0.95rem;
+            }
+
+            .brand-subtitle {
+                display: none;
+            }
+
+            .theme-toggle {
+                width: 38px;
+                height: 38px;
+            }
+
+            .filter-grid,
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .actions {
+                grid-template-columns: 1fr;
+            }
+
+            .metric-card {
+                min-height: 74px;
+            }
+        }
+    </style>
+    
+</head>
+<body>
+    
+    
+    
+    
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="topbar-inner">
+                <a class="brand" href="/sales" aria-label="العودة إلى المبيعات">
+                    <h1 class="brand-title">نظام إدارة المجوهرات</h1>
+                    <div class="brand-subtitle">عرض ويب للبيانات فقط</div>
+                </a>
+                <nav class="nav-tabs" aria-label="التنقل الرئيسي">
+                    <a class="nav-link is-active" href="/sales">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        المبيعات
+                    </a>
+                    <a class="nav-link " href="/versements">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M5 8h14M7 12h10M9 16h6M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        الدفعات
+                    </a>
+                    <a class="nav-link " href="/inventory">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M4 7l8-4 8 4-8 4-8-4ZM4 12l8 4 8-4M4 17l8 4 8-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        المخزون
+                    </a>
+                    <a class="nav-link " href="/finance">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M4 7h16v12H4V7ZM7 7V5h10v2M8 13h8M8 16h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        المالية
+                    </a>
+                </nav>
+                <div class="header-tools">
+                    <div class="language-switch" aria-label="اللغة">
+                        
+                            <a class="language-link is-active" href="/?lang=ar" lang="ar">العربية</a>
+                        
+                            <a class="language-link " href="/?lang=fr" lang="fr">Français</a>
+                        
+                    </div>
+                    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="تغيير الثيم" title="تغيير الثيم">
+                        <svg class="theme-icon theme-moon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M20 14.6A7.8 7.8 0 0 1 9.4 4 8.2 8.2 0 1 0 20 14.6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                        </svg>
+                        <svg class="theme-icon theme-sun" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M12 4V2M12 22v-2M4.9 4.9 3.5 3.5M20.5 20.5l-1.4-1.4M4 12H2M22 12h-2M4.9 19.1l-1.4 1.4M20.5 3.5l-1.4 1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="content">
+            
+<section class="page-header">
+    <div>
+        <h2 class="page-title">سجل المبيعات والعمليات</h2>
+        <div class="page-kicker">البيانات تعرض من واجهة القراءة فقط، مع تحميل تدريجي مناسب للهاتف.</div>
+    </div>
+</section>
+
+<section class="toolbar" aria-label="فلاتر المبيعات">
+    <form id="sales-filter" class="filter-grid" autocomplete="off">
+        <div class="field field-search">
+            <label for="sales-search">بحث</label>
+            <input class="input" id="sales-search" name="search" type="search" placeholder="اسم الزبون أو رقم العملية">
+        </div>
+        <div class="field">
+            <label for="sales-start">من تاريخ</label>
+            <input class="input" id="sales-start" name="start_date" type="date">
+        </div>
+        <div class="field">
+            <label for="sales-end">إلى تاريخ</label>
+            <input class="input" id="sales-end" name="end_date" type="date">
+        </div>
+        <div class="field">
+            <label for="sales-debt">الحالة</label>
+            <select class="select" id="sales-debt" name="debt_status">
+                <option value="ALL">الكل</option>
+                <option value="WITH_DEBT">مع باقي</option>
+                <option value="PAID">مدفوع</option>
+            </select>
+        </div>
+        <div class="actions">
+            <button class="btn btn-primary" type="submit">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                تحديث
+            </button>
+            <button class="btn btn-ghost" id="sales-reset" type="button">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M5 12a7 7 0 1 0 2-5M5 4v5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                مسح
+            </button>
+        </div>
+    </form>
+</section>
+
+<section class="summary-grid" aria-label="ملخص البيانات المحملة">
+    <article class="metric-card">
+        <div class="metric-label">عدد السجلات المحملة</div>
+        <div class="metric-value" id="loaded-count">0</div>
+    </article>
+    <article class="metric-card">
+        <div class="metric-label">إجمالي الفواتير</div>
+        <div class="metric-value value-positive" id="loaded-total">0 دج</div>
+    </article>
+    <article class="metric-card">
+        <div class="metric-label">إجمالي الدفعات</div>
+        <div class="metric-value value-info" id="loaded-paid">0 دج</div>
+    </article>
+    <article class="metric-card">
+        <div class="metric-label">الباقي بالذهب</div>
+        <div class="metric-value value-danger" id="loaded-weight">0.000 غ</div>
+    </article>
+</section>
+
+<section class="data-panel" aria-label="جدول المبيعات">
+    <div class="table-scroll">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>رقم</th>
+                    <th>النوع</th>
+                    <th>الزبون</th>
+                    <th>التاريخ</th>
+                    <th>المنتجات</th>
+                    <th>الوزن</th>
+                    <th>الإجمالي</th>
+                    <th>المدفوع</th>
+                    <th>الباقي</th>
+                    <th>ملاحظات</th>
+                </tr>
+            </thead>
+            <tbody id="sales-table-body"></tbody>
+        </table>
+        <div class="state-row" id="sales-table-state">
+            <span class="spinner" aria-hidden="true"></span>
+        </div>
+    </div>
+</section>
+
+<section class="mobile-list" id="sales-cards" aria-label="قائمة المبيعات للهاتف"></section>
+
+<div class="load-more-wrap">
+    <button class="btn" id="sales-load-more" type="button">تحميل المزيد</button>
+</div>
+
+        </main>
+    </div>
+
+    <nav class="bottom-nav" aria-label="التنقل السريع للهاتف">
+        <div class="bottom-nav-inner">
+            <a class="bottom-link is-active" href="/sales">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                المبيعات
+            </a>
+            <a class="bottom-link " href="/versements">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M5 8h14M7 12h10M9 16h6M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                الدفعات
+            </a>
+            <a class="bottom-link " href="/inventory">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 7l8-4 8 4-8 4-8-4ZM4 12l8 4 8-4M4 17l8 4 8-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                المخزون
+            </a>
+            <a class="bottom-link " href="/finance">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 7h16v12H4V7ZM7 7V5h10v2M8 13h8M8 16h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                المالية
+            </a>
+        </div>
+    </nav>
+
+    <script>
+        window.GoldShop = (() => {
+            const i18n = {
+                dir: "rtl",
+                lang: "ar",
+                messages: {"api": {"descriptions": {"client_balances": "\u0623\u0631\u0635\u062f\u0629 \u0632\u0628\u0648\u0646.", "client_details": "\u062a\u0641\u0627\u0635\u064a\u0644 \u0632\u0628\u0648\u0646.", "client_payments": "\u0633\u062c\u0644 \u062f\u0641\u0639\u0627\u062a \u0632\u0628\u0648\u0646.", "clients": "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0632\u0628\u0627\u0626\u0646 \u0645\u0639 \u0635\u0641\u062d\u0627\u062a.", "dashboard": "\u0645\u0624\u0634\u0631\u0627\u062a \u0644\u0648\u062d\u0629 \u0627\u0644\u062a\u062d\u0643\u0645 \u0648\u0627\u0644\u062a\u0646\u0628\u064a\u0647\u0627\u062a \u0648\u0627\u0644\u0627\u062a\u062c\u0627\u0647\u0627\u062a.", "expenses": "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0635\u0627\u0631\u064a\u0641 \u0645\u0639 \u0635\u0641\u062d\u0627\u062a.", "finance_page": "\u0648\u0627\u062c\u0647\u0629 \u0648\u064a\u0628 \u0644\u0644\u062e\u0632\u0646\u0627\u062a \u0648\u0627\u0644\u0635\u0646\u0627\u062f\u064a\u0642.", "health": "\u062d\u0627\u0644\u0629 \u0627\u0644\u062e\u0627\u062f\u0645 \u0648\u0642\u0627\u0639\u062f\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a.", "inventory": "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u062e\u0632\u0648\u0646 \u0645\u0639 \u0635\u0641\u062d\u0627\u062a.", "inventory_details": "\u062a\u0641\u0627\u0635\u064a\u0644 \u0642\u0637\u0639\u0629 \u0645\u0646 \u0627\u0644\u0645\u062e\u0632\u0648\u0646.", "inventory_page": "\u0648\u0627\u062c\u0647\u0629 \u0648\u064a\u0628 \u0644\u0644\u0645\u062e\u0632\u0648\u0646 \u0645\u0646\u0627\u0633\u0628\u0629 \u0644\u0644\u0647\u0627\u062a\u0641.", "payments": "\u0642\u0627\u0626\u0645\u0629 \u062f\u0641\u0639\u0627\u062a \u0627\u0644\u0632\u0628\u0627\u0626\u0646 \u0645\u0639 \u0635\u0641\u062d\u0627\u062a.", "references": "\u062c\u062f\u0627\u0648\u0644 \u0645\u0631\u062c\u0639\u064a\u0629 \u0644\u0644\u0641\u0644\u0627\u062a\u0631 \u0648\u0627\u0644\u0646\u0645\u0627\u0630\u062c.", "repairs": "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0625\u0635\u0644\u0627\u062d\u0627\u062a \u0645\u0639 \u0635\u0641\u062d\u0627\u062a.", "sale_details": "\u062a\u0641\u0627\u0635\u064a\u0644 \u0641\u0627\u062a\u0648\u0631\u0629 \u0627\u0644\u0628\u064a\u0639.", "sales": "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0628\u064a\u0639\u0627\u062a \u0648\u0627\u0644\u062f\u0641\u0639\u0627\u062a \u0645\u0639 \u0635\u0641\u062d\u0627\u062a.", "search": "\u0628\u062d\u062b \u0635\u063a\u064a\u0631 \u0644\u0644\u0642\u0631\u0627\u0621\u0629 \u0641\u0642\u0637.", "supplier_balances": "\u0623\u0631\u0635\u062f\u0629 \u0627\u0644\u0645\u0648\u0631\u062f.", "supplier_history": "\u0633\u062c\u0644 \u0627\u0644\u0645\u0648\u0631\u062f.", "suppliers": "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0648\u0631\u062f\u064a\u0646 \u0648\u0627\u0644\u062d\u0631\u0641\u064a\u064a\u0646.", "treasury_balances": "\u0623\u0631\u0635\u062f\u0629 \u0627\u0644\u0645\u0627\u0644\u064a\u0629 \u062d\u0633\u0628 \u0627\u0644\u0645\u0648\u0642\u0639."}, "errors": {"internal": "\u062e\u0637\u0623 \u062f\u0627\u062e\u0644\u064a \u0641\u064a \u0648\u0627\u062c\u0647\u0629 \u0627\u0644\u0642\u0631\u0627\u0621\u0629.", "not_found": "{resource} \u063a\u064a\u0631 \u0645\u0648\u062c\u0648\u062f.", "read_only": "\u0647\u0630\u0647 \u0627\u0644\u0648\u0627\u062c\u0647\u0629 \u0644\u0644\u0642\u0631\u0627\u0621\u0629 \u0641\u0642\u0637. \u0627\u0633\u062a\u0639\u0645\u0644 \u0637\u0644\u0628\u0627\u062a GET \u0644\u0639\u0631\u0636 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a."}, "mode": {"read_only": "\u0642\u0631\u0627\u0621\u0629 \u0641\u0642\u0637"}}, "app": {"back_to_sales": "\u0627\u0644\u0639\u0648\u062f\u0629 \u0625\u0644\u0649 \u0627\u0644\u0645\u0628\u064a\u0639\u0627\u062a", "subtitle": "\u0639\u0631\u0636 \u0648\u064a\u0628 \u0644\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0641\u0642\u0637", "title": "\u0646\u0638\u0627\u0645 \u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0645\u062c\u0648\u0647\u0631\u0627\u062a"}, "common": {"all": "\u0627\u0644\u0643\u0644", "amount": "\u0627\u0644\u0645\u0628\u0644\u063a", "client": "\u0627\u0644\u0632\u0628\u0648\u0646", "currency": "\u0627\u0644\u0639\u0645\u0644\u0629", "date": "\u0627\u0644\u062a\u0627\u0631\u064a\u062e", "description": "\u0627\u0644\u0648\u0635\u0641", "details": "\u062a\u0641\u0627\u0635\u064a\u0644", "end_record": "\u0646\u0647\u0627\u064a\u0629 \u0627\u0644\u0633\u062c\u0644", "from_date": "\u0645\u0646 \u062a\u0627\u0631\u064a\u062e", "general_client": "\u0632\u0628\u0648\u0646 \u0639\u0627\u0645", "load_error": "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a.", "load_more": "\u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0645\u0632\u064a\u062f", "loading": "\u062c\u0627\u0631\u064a \u0627\u0644\u062a\u062d\u0645\u064a\u0644", "location": "\u0627\u0644\u0645\u0648\u0642\u0639", "no_matching_results": "\u0644\u0627 \u062a\u0648\u062c\u062f \u0646\u062a\u0627\u0626\u062c \u0645\u0637\u0627\u0628\u0642\u0629.", "notes": "\u0645\u0644\u0627\u062d\u0638\u0627\u062a", "number": "\u0631\u0642\u0645", "operation": "\u0627\u0644\u0639\u0645\u0644\u064a\u0629", "paid": "\u0627\u0644\u0645\u062f\u0641\u0648\u0639", "product": "\u0627\u0644\u0645\u0646\u062a\u062c", "products": "\u0627\u0644\u0645\u0646\u062a\u062c\u0627\u062a", "remaining": "\u0627\u0644\u0628\u0627\u0642\u064a", "reset": "\u0645\u0633\u062d", "search": "\u0628\u062d\u062b", "show": "\u0639\u0631\u0636", "status": "\u0627\u0644\u062d\u0627\u0644\u0629", "to_date": "\u0625\u0644\u0649 \u062a\u0627\u0631\u064a\u062e", "total": "\u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a", "type": "\u0627\u0644\u0646\u0648\u0639", "update": "\u062a\u062d\u062f\u064a\u062b", "weight": "\u0627\u0644\u0648\u0632\u0646"}, "finance": {"active_locations": "\u0639\u062f\u062f \u0627\u0644\u0645\u0648\u0627\u0642\u0639 \u0627\u0644\u0646\u0634\u0637\u0629", "all_currencies": "\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u062a", "all_locations": "\u0643\u0644 \u0627\u0644\u062e\u0632\u0646\u0627\u062a \u0648\u0627\u0644\u0635\u0646\u0627\u062f\u064a\u0642", "arg_balance": "\u0631\u0635\u064a\u062f \u0627\u0644\u0641\u0636\u0629 ARG", "balances_aria": "\u0623\u0631\u0635\u062f\u0629 \u0627\u0644\u062e\u0632\u0646\u0627\u062a \u0648\u0627\u0644\u0635\u0646\u0627\u062f\u064a\u0642", "balances_load_error": "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0623\u0631\u0635\u062f\u0629.", "caisse": "Caisse / \u0635\u0646\u062f\u0648\u0642", "coffre": "Coffre / \u062e\u0632\u0646\u0629", "dzd_balance": "\u0627\u0644\u0631\u0635\u064a\u062f DZD", "empty": "\u0644\u0627 \u062a\u0648\u062c\u062f \u062d\u0631\u0643\u0627\u062a \u0645\u0627\u0644\u064a\u0629 \u0645\u0637\u0627\u0628\u0642\u0629.", "end": "\u0646\u0647\u0627\u064a\u0629 \u0627\u0644\u062d\u0631\u0643\u0627\u062a", "filters_aria": "\u0641\u0644\u0627\u062a\u0631 \u0627\u0644\u062d\u0631\u0643\u0627\u062a \u0627\u0644\u0645\u0627\u0644\u064a\u0629", "load_error": "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u062d\u0631\u0643\u0627\u062a \u0627\u0644\u0645\u0627\u0644\u064a\u0629.", "mobile_aria": "\u062d\u0631\u0643\u0627\u062a \u0645\u0627\u0644\u064a\u0629 \u0644\u0644\u0647\u0627\u062a\u0641", "no_active_locations": "\u0644\u0627 \u062a\u0648\u062c\u062f \u0645\u0648\u0627\u0642\u0639 \u0645\u0627\u0644\u064a\u0629 \u0646\u0634\u0637\u0629.", "no_visible_balances": "\u0644\u0627 \u062a\u0648\u062c\u062f \u0623\u0631\u0635\u062f\u0629 \u0638\u0627\u0647\u0631\u0629.", "or_balance": "\u0631\u0635\u064a\u062f \u0627\u0644\u0630\u0647\u0628 OR", "page_title": "\u0627\u0644\u0645\u0627\u0644\u064a\u0629 - \u0646\u0638\u0627\u0645 \u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0645\u062c\u0648\u0647\u0631\u0627\u062a", "subtitle": "\u0639\u0631\u0636 \u0623\u0631\u0635\u062f\u0629 \u0627\u0644\u062e\u0632\u0646\u0627\u062a \u0648\u0627\u0644\u0635\u0646\u0627\u062f\u064a\u0642 \u0648\u062d\u0631\u0643\u0627\u062a\u0647\u0627 \u0645\u0646 \u0648\u0627\u062c\u0647\u0627\u062a \u0627\u0644\u0642\u0631\u0627\u0621\u0629 \u0641\u0642\u0637.", "summary_aria": "\u0645\u0644\u062e\u0635 \u0627\u0644\u0645\u0627\u0644\u064a\u0629", "table_aria": "\u062c\u062f\u0648\u0644 \u0627\u0644\u062d\u0631\u0643\u0627\u062a \u0627\u0644\u0645\u0627\u0644\u064a\u0629", "title": "\u062d\u0627\u0644\u0629 \u0627\u0644\u0645\u0627\u0644\u064a\u0629: Coffre \u0648 Caisse"}, "format": {"dzd_suffix": "\u062f\u062c", "gram_suffix": "\u063a", "piece_suffix": "\u0642\u0637\u0639\u0629"}, "inventory": {"actually_available": "\u0627\u0644\u0645\u062a\u0648\u0641\u0631 \u0641\u0639\u0644\u064a\u0627\u064b", "all_categories": "\u0643\u0644 \u0627\u0644\u0641\u0626\u0627\u062a", "all_locations": "\u0643\u0644 \u0627\u0644\u0623\u0645\u0627\u0643\u0646", "all_metals": "\u0643\u0644 \u0627\u0644\u0645\u0639\u0627\u062f\u0646", "barcode": "\u0628\u0627\u0631\u0643\u0648\u062f", "category": "\u0627\u0644\u0641\u0626\u0629", "empty": "\u0644\u0627 \u062a\u0648\u062c\u062f \u0645\u0646\u062a\u062c\u0627\u062a \u0645\u0637\u0627\u0628\u0642\u0629.", "end": "\u0646\u0647\u0627\u064a\u0629 \u0627\u0644\u0645\u062e\u0632\u0648\u0646", "entry_date": "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0625\u062f\u062e\u0627\u0644", "extra_details": "\u062a\u0641\u0627\u0635\u064a\u0644 \u0625\u0636\u0627\u0641\u064a\u0629", "filters_aria": "\u0641\u0644\u0627\u062a\u0631 \u0627\u0644\u0645\u062e\u0632\u0648\u0646", "internal_id": "\u0631\u0642\u0645 \u062f\u0627\u062e\u0644\u064a", "labor_cost_per_gram": "\u0627\u0644\u0645\u0635\u0646\u0639\u064a\u0629/\u063a", "load_error": "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0645\u062e\u0632\u0648\u0646.", "loaded_products": "\u0627\u0644\u0645\u0646\u062a\u062c\u0627\u062a \u0627\u0644\u0645\u062d\u0645\u0644\u0629", "loaded_sale_value": "\u0642\u064a\u0645\u0629 \u0627\u0644\u0628\u064a\u0639 \u0627\u0644\u0645\u062d\u0645\u0644\u0629", "matching_weight": "\u0648\u0632\u0646 \u0645\u0637\u0627\u0628\u0642 \u0644\u0644\u0641\u0644\u062a\u0631", "max_weight": "\u0648\u0632\u0646 \u0623\u0642\u0635\u0649", "metal": "\u0627\u0644\u0645\u0639\u062f\u0646", "metal_cost_per_gram": "\u062a\u0643\u0644\u0641\u0629 \u0627\u0644\u0645\u0639\u062f\u0646/\u063a", "min_weight": "\u0648\u0632\u0646 \u0623\u062f\u0646\u0649", "mobile_aria": "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u062e\u0632\u0648\u0646 \u0644\u0644\u0647\u0627\u062a\u0641", "page_title": "\u0627\u0644\u0645\u062e\u0632\u0648\u0646 - \u0646\u0638\u0627\u0645 \u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0645\u062c\u0648\u0647\u0631\u0627\u062a", "profit": "\u0627\u0644\u0641\u0627\u0626\u062f\u0629", "purity": "\u0627\u0644\u0646\u0642\u0627\u0648\u0629", "reserved_for": "\u0645\u062d\u062c\u0648\u0632 \u0644\u0640", "sale_type": "\u0646\u0648\u0639 \u0627\u0644\u0628\u064a\u0639", "search_placeholder": "\u0627\u0633\u0645 \u0627\u0644\u0645\u0646\u062a\u062c\u060c \u0627\u0644\u0628\u0627\u0631\u0643\u0648\u062f\u060c \u0623\u0648 \u0627\u0633\u0645 \u0627\u0644\u0632\u0628\u0648\u0646 \u0627\u0644\u0645\u062d\u062c\u0648\u0632 \u0644\u0647", "selling_price": "\u0633\u0639\u0631 \u0627\u0644\u0628\u064a\u0639", "show_zero": "\u0625\u0638\u0647\u0627\u0631 \u0627\u0644\u062d\u0627\u0644\u0627\u062a \u0627\u0644\u0645\u0646\u062a\u0647\u064a\u0629 \u0623\u0648 \u0630\u0627\u062a \u0631\u0635\u064a\u062f \u0635\u0641\u0631", "show_zero_label": "\u0625\u0638\u0647\u0627\u0631 \u0627\u0644\u0645\u062e\u0632\u0648\u0646 \u0627\u0644\u0645\u0646\u062a\u0647\u064a", "stock": "\u0627\u0644\u0631\u0635\u064a\u062f", "storage_place": "\u0627\u0644\u0645\u0643\u0627\u0646", "subtitle": "\u0639\u0631\u0636 \u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u062a\u0627\u062d\u0629 \u0648\u0627\u0644\u0645\u062d\u062c\u0648\u0632\u0629 \u0645\u0639 \u0627\u0644\u0633\u0639\u0631\u060c \u0627\u0644\u0648\u0632\u0646\u060c \u0627\u0644\u0645\u0648\u0631\u062f\u060c \u0648\u0645\u0643\u0627\u0646 \u0627\u0644\u062a\u062e\u0632\u064a\u0646.", "summary_aria": "\u0645\u0644\u062e\u0635 \u0627\u0644\u0645\u062e\u0632\u0648\u0646", "supplier": "\u0627\u0644\u0645\u0648\u0631\u062f", "table_aria": "\u062c\u062f\u0648\u0644 \u0627\u0644\u0645\u062e\u0632\u0648\u0646", "title": "\u0627\u0644\u0645\u0646\u062a\u062c\u0627\u062a \u0627\u0644\u0645\u0648\u062c\u0648\u062f\u0629 \u0641\u064a \u0627\u0644\u0645\u062e\u0632\u0648\u0646", "total_cost": "\u0627\u0644\u062a\u0643\u0644\u0641\u0629 \u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a\u0629", "total_results": "\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0646\u062a\u0627\u0626\u062c"}, "inventory_status": {"Available": "\u0645\u062a\u0627\u062d", "Lost": "\u0636\u0627\u0626\u0639", "Partially_Sold": "\u0645\u0628\u0627\u0639 \u062c\u0632\u0626\u064a\u0627\u064b", "Repair": "\u0625\u0635\u0644\u0627\u062d", "Reserved": "\u0645\u062d\u062c\u0648\u0632", "Scrap": "\u0643\u0633\u0631", "Sold": "\u0645\u0628\u0627\u0639"}, "item_types": {"piece": "\u0628\u0627\u0644\u0642\u0637\u0639\u0629", "weight": "\u0628\u0627\u0644\u0648\u0632\u0646"}, "language": {"ar": "\u0627\u0644\u0639\u0631\u0628\u064a\u0629", "fr": "Fran\u00e7ais", "label": "\u0627\u0644\u0644\u063a\u0629"}, "nav": {"finance": "\u0627\u0644\u0645\u0627\u0644\u064a\u0629", "inventory": "\u0627\u0644\u0645\u062e\u0632\u0648\u0646", "main": "\u0627\u0644\u062a\u0646\u0642\u0644 \u0627\u0644\u0631\u0626\u064a\u0633\u064a", "mobile": "\u0627\u0644\u062a\u0646\u0642\u0644 \u0627\u0644\u0633\u0631\u064a\u0639 \u0644\u0644\u0647\u0627\u062a\u0641", "payments": "\u0627\u0644\u062f\u0641\u0639\u0627\u062a", "sales": "\u0627\u0644\u0645\u0628\u064a\u0639\u0627\u062a"}, "payment_types": {"ACOMPTE_PRODUIT": "Acompte produit", "PAIEMENT_FACTURE": "Paiement facture", "VERSEMENT_LIBRE": "Versement libre", "acompte": "Acompte", "libre": "Libre"}, "payments": {"empty": "\u0644\u0627 \u062a\u0648\u062c\u062f \u062f\u0641\u0639\u0627\u062a \u0645\u0637\u0627\u0628\u0642\u0629.", "end": "\u0646\u0647\u0627\u064a\u0629 \u0627\u0644\u0633\u062c\u0644", "filters_aria": "\u0641\u0644\u0627\u062a\u0631 \u0627\u0644\u062f\u0641\u0639\u0627\u062a", "load_error": "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a.", "loaded_count": "\u0627\u0644\u0633\u062c\u0644\u0627\u062a \u0627\u0644\u0645\u062d\u0645\u0644\u0629", "mobile_aria": "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u062f\u0641\u0639\u0627\u062a \u0644\u0644\u0647\u0627\u062a\u0641", "page_title": "\u0627\u0644\u062f\u0641\u0639\u0627\u062a - \u0646\u0638\u0627\u0645 \u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0645\u062c\u0648\u0647\u0631\u0627\u062a", "payment_type": "\u0646\u0648\u0639 \u0627\u0644\u062f\u0641\u0639\u0629", "purchased_weight": "\u0627\u0644\u0648\u0632\u0646 \u0627\u0644\u0645\u0634\u062a\u0631\u0649", "search_placeholder": "\u0627\u0633\u0645 \u0627\u0644\u0632\u0628\u0648\u0646\u060c \u0627\u0644\u0645\u0646\u062a\u062c\u060c \u0623\u0648 \u0645\u0644\u0627\u062d\u0638\u0629", "subtitle": "\u0627\u0633\u062a\u0639\u0631\u0627\u0636 versements \u0648acomptes \u0645\u0646 API \u0627\u0644\u0642\u0631\u0627\u0621\u0629 \u0641\u0642\u0637 \u0645\u0639 \u0641\u0644\u0627\u062a\u0631 \u0633\u0631\u064a\u0639\u0629.", "summary_aria": "\u0645\u0644\u062e\u0635 \u0627\u0644\u062f\u0641\u0639\u0627\u062a", "table_aria": "\u062c\u062f\u0648\u0644 \u0627\u0644\u062f\u0641\u0639\u0627\u062a", "title": "\u0633\u062c\u0644 \u0627\u0644\u062f\u0641\u0639\u0627\u062a", "total_amount": "\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0645\u0628\u0644\u063a", "total_results": "\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0646\u062a\u0627\u0626\u062c"}, "sales": {"debt_all": "\u0627\u0644\u0643\u0644", "debt_badge": "\u0628\u0627\u0642\u064a", "empty": "\u0644\u0627 \u062a\u0648\u062c\u062f \u0646\u062a\u0627\u0626\u062c \u0645\u0637\u0627\u0628\u0642\u0629.", "end": "\u0646\u0647\u0627\u064a\u0629 \u0627\u0644\u0633\u062c\u0644", "filters_aria": "\u0641\u0644\u0627\u062a\u0631 \u0627\u0644\u0645\u0628\u064a\u0639\u0627\u062a", "gold_remaining": "\u0627\u0644\u0628\u0627\u0642\u064a \u0628\u0627\u0644\u0630\u0647\u0628", "invoice_badge": "\u0641\u0627\u062a\u0648\u0631\u0629", "invoices_total": "\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0641\u0648\u0627\u062a\u064a\u0631", "load_error": "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a.", "loaded_count": "\u0639\u062f\u062f \u0627\u0644\u0633\u062c\u0644\u0627\u062a \u0627\u0644\u0645\u062d\u0645\u0644\u0629", "mobile_aria": "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0628\u064a\u0639\u0627\u062a \u0644\u0644\u0647\u0627\u062a\u0641", "page_title": "\u0627\u0644\u0645\u0628\u064a\u0639\u0627\u062a - \u0646\u0638\u0627\u0645 \u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0645\u062c\u0648\u0647\u0631\u0627\u062a", "paid_badge": "\u0645\u062f\u0641\u0648\u0639", "paid_filter": "\u0645\u062f\u0641\u0648\u0639", "payment_badge": "\u062f\u0641\u0639\u0629", "payments_total": "\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u062f\u0641\u0639\u0627\u062a", "search_placeholder": "\u0627\u0633\u0645 \u0627\u0644\u0632\u0628\u0648\u0646 \u0623\u0648 \u0631\u0642\u0645 \u0627\u0644\u0639\u0645\u0644\u064a\u0629", "subtitle": "\u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u062a\u0639\u0631\u0636 \u0645\u0646 \u0648\u0627\u062c\u0647\u0629 \u0627\u0644\u0642\u0631\u0627\u0621\u0629 \u0641\u0642\u0637\u060c \u0645\u0639 \u062a\u062d\u0645\u064a\u0644 \u062a\u062f\u0631\u064a\u062c\u064a \u0645\u0646\u0627\u0633\u0628 \u0644\u0644\u0647\u0627\u062a\u0641.", "summary_aria": "\u0645\u0644\u062e\u0635 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0645\u062d\u0645\u0644\u0629", "table_aria": "\u062c\u062f\u0648\u0644 \u0627\u0644\u0645\u0628\u064a\u0639\u0627\u062a", "title": "\u0633\u062c\u0644 \u0627\u0644\u0645\u0628\u064a\u0639\u0627\u062a \u0648\u0627\u0644\u0639\u0645\u0644\u064a\u0627\u062a", "with_debt": "\u0645\u0639 \u0628\u0627\u0642\u064a"}, "theme": {"dark": "\u062f\u0627\u0643\u0646", "label": "\u0627\u0644\u062b\u064a\u0645", "light": "\u0641\u0627\u062a\u062d", "toggle": "\u062a\u063a\u064a\u064a\u0631 \u0627\u0644\u062b\u064a\u0645"}}
+            };
+
+            const getTranslation = (key) => {
+                const parts = String(key).split(".");
+                let value = i18n.messages;
+                for (const part of parts) {
+                    if (!value || typeof value !== "object" || !(part in value)) {
+                        return key;
+                    }
+                    value = value[part];
+                }
+                return typeof value === "string" ? value : key;
+            };
+
+            const locale = i18n.lang === "fr" ? "fr-DZ" : "ar-DZ";
+            const moneyFormatter = new Intl.NumberFormat(locale, {
+                maximumFractionDigits: 2
+            });
+
+            const compactFormatter = new Intl.NumberFormat(locale, {
+                maximumFractionDigits: 0
+            });
+
+            const escapeHtml = (value) => String(value ?? "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+
+            const toNumber = (value) => {
+                const parsed = Number.parseFloat(value);
+                return Number.isFinite(parsed) ? parsed : 0;
+            };
+
+            const formatMoney = (value) => `${moneyFormatter.format(toNumber(value))} ${getTranslation("format.dzd_suffix")}`;
+            const formatCompactMoney = (value) => `${compactFormatter.format(toNumber(value))} ${getTranslation("format.dzd_suffix")}`;
+            const formatWeight = (value) => `${toNumber(value).toFixed(3)} ${getTranslation("format.gram_suffix")}`;
+
+            const formatDate = (value) => {
+                if (!value) return "-";
+                const normalized = String(value).replace(" ", "T");
+                const date = new Date(normalized);
+                if (Number.isNaN(date.getTime())) return escapeHtml(value);
+                return date.toLocaleString(locale, {
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit"
+                });
+            };
+
+            const setLoading = (button, loading, text = getTranslation("common.load_more")) => {
+                if (!button) return;
+                button.disabled = loading;
+                button.innerHTML = loading
+                    ? `<span class="spinner" aria-hidden="true"></span><span>${escapeHtml(getTranslation("common.loading"))}</span>`
+                    : escapeHtml(text);
+            };
+
+            const themeStorageKey = "goldshop_theme";
+            const normalizeTheme = (theme) => theme === "light" || theme === "dark" ? theme : "dark";
+
+            const applyTheme = (theme) => {
+                const selectedTheme = normalizeTheme(theme);
+                document.documentElement.dataset.theme = selectedTheme;
+                const button = document.getElementById("theme-toggle");
+                if (button) {
+                    const nextTheme = selectedTheme === "dark" ? getTranslation("theme.light") : getTranslation("theme.dark");
+                    const label = `${getTranslation("theme.toggle")} - ${nextTheme}`;
+                    button.setAttribute("aria-label", label);
+                    button.setAttribute("title", label);
+                }
+                return selectedTheme;
+            };
+
+            const setTheme = (theme) => {
+                const selectedTheme = applyTheme(theme);
+                try {
+                    window.localStorage.setItem(themeStorageKey, selectedTheme);
+                } catch (_) {
+                    // localStorage can be blocked in private or embedded contexts.
+                }
+                return selectedTheme;
+            };
+
+            const toggleTheme = () => {
+                const currentTheme = normalizeTheme(document.documentElement.dataset.theme);
+                return setTheme(currentTheme === "dark" ? "light" : "dark");
+            };
+
+            const apiGet = async (url, params = {}) => {
+                const search = new URLSearchParams();
+                Object.entries(params).forEach(([key, value]) => {
+                    if (value !== undefined && value !== null && value !== "") {
+                        search.set(key, value);
+                    }
+                });
+
+                const response = await fetch(`${url}${search.toString() ? `?${search}` : ""}`, {
+                    headers: { "Accept": "application/json" }
+                });
+                const payload = await response.json();
+                if (!response.ok || payload.success === false) {
+                    throw new Error(payload.error || getTranslation("common.load_error"));
+                }
+                return payload;
+            };
+
+            const debounce = (fn, wait = 450) => {
+                let timer = null;
+                return (...args) => {
+                    window.clearTimeout(timer);
+                    timer = window.setTimeout(() => fn(...args), wait);
+                };
+            };
+
+            return {
+                apiGet,
+                debounce,
+                escapeHtml,
+                formatCompactMoney,
+                formatDate,
+                formatMoney,
+                formatWeight,
+                i18n,
+                setLoading,
+                setTheme,
+                t: getTranslation,
+                toggleTheme,
+                toNumber
+            };
+        })();
+
+        document.getElementById("theme-toggle")?.addEventListener("click", () => {
+            window.GoldShop.toggleTheme();
+        });
+        window.GoldShop.setTheme(document.documentElement.dataset.theme);
+    </script>
+    
+<script>
+    (() => {
+        const {
+            apiGet,
+            debounce,
+            escapeHtml,
+            formatCompactMoney,
+            formatDate,
+            formatMoney,
+            formatWeight,
+            setLoading,
+            t,
+            toNumber
+        } = window.GoldShop;
+
+        const form = document.getElementById("sales-filter");
+        const resetButton = document.getElementById("sales-reset");
+        const loadMoreButton = document.getElementById("sales-load-more");
+        const tableBody = document.getElementById("sales-table-body");
+        const tableState = document.getElementById("sales-table-state");
+        const cards = document.getElementById("sales-cards");
+        const countEl = document.getElementById("loaded-count");
+        const totalEl = document.getElementById("loaded-total");
+        const paidEl = document.getElementById("loaded-paid");
+        const weightEl = document.getElementById("loaded-weight");
+
+        const state = {
+            page: 0,
+            perPage: 25,
+            hasMore: true,
+            loading: false,
+            rows: []
+        };
+
+        const filters = () => ({
+            search: form.search.value.trim(),
+            start_date: form.start_date.value,
+            end_date: form.end_date.value,
+            debt_status: form.debt_status.value,
+            per_page: state.perPage
+        });
+
+        const recordBadge = (row) => {
+            if (row.record_type === "PAYMENT") {
+                return `<span class="badge badge-payment">${escapeHtml(t("sales.payment_badge"))}</span>`;
+            }
+            return `<span class="badge badge-sale">${escapeHtml(t("sales.invoice_badge"))}</span>`;
+        };
+
+        const debtBadge = (row) => {
+            const moneyDebt = toNumber(row.Reste_DA);
+            const weightDebt = toNumber(row.Reste_g);
+            if (moneyDebt <= 0.05 && weightDebt <= 0.005) {
+                return `<span class="badge badge-paid">${escapeHtml(t("sales.paid_badge"))}</span>`;
+            }
+            return `<span class="badge badge-debt">${escapeHtml(t("sales.debt_badge"))}</span>`;
+        };
+
+        const renderSummary = () => {
+            const totals = state.rows.reduce((acc, row) => {
+                acc.count += 1;
+                acc.total += toNumber(row.Prix);
+                acc.paid += toNumber(row.Vers);
+                acc.weight += toNumber(row.Reste_g);
+                return acc;
+            }, { count: 0, total: 0, paid: 0, weight: 0 });
+
+            countEl.textContent = totals.count;
+            totalEl.textContent = formatCompactMoney(totals.total);
+            paidEl.textContent = formatCompactMoney(totals.paid);
+            weightEl.textContent = formatWeight(totals.weight);
+        };
+
+        const tableRow = (row) => `
+            <tr>
+                <td class="cell-muted">#${escapeHtml(row.NO)}</td>
+                <td>${recordBadge(row)}</td>
+                <td><strong>${escapeHtml(row.Nom || t("common.general_client"))}</strong></td>
+                <td class="cell-muted" dir="ltr">${formatDate(row.Dates)}</td>
+                <td dir="auto">${escapeHtml(row.Objets || "-")}</td>
+                <td class="value-warning" dir="ltr">${formatWeight(row.Poids)}</td>
+                <td class="value-positive" dir="ltr">${formatMoney(row.Prix)}</td>
+                <td class="value-info" dir="ltr">${formatMoney(row.Vers)}</td>
+                <td>${debtBadge(row)}</td>
+                <td class="cell-dim" dir="auto">${escapeHtml(row.Observation || "-")}</td>
+            </tr>
+        `;
+
+        const cardRow = (row) => `
+            <article class="data-card">
+                <div class="card-top">
+                    <div>
+                        <h3 class="card-title">${escapeHtml(row.Nom || t("common.general_client"))}</h3>
+                        <div class="card-subtitle" dir="ltr">#${escapeHtml(row.NO)} - ${formatDate(row.Dates)}</div>
+                    </div>
+                    <div>${recordBadge(row)}</div>
+                </div>
+                <div class="card-lines">
+                    <div class="info-line">
+                        <span class="info-label">${escapeHtml(t("common.products"))}</span>
+                        <span class="info-value" dir="auto">${escapeHtml(row.Objets || "-")}</span>
+                    </div>
+                    <div class="info-line">
+                        <span class="info-label">${escapeHtml(t("common.weight"))}</span>
+                        <span class="info-value value-warning">${formatWeight(row.Poids)}</span>
+                    </div>
+                    <div class="info-line">
+                        <span class="info-label">${escapeHtml(t("common.total"))}</span>
+                        <span class="info-value value-positive">${formatMoney(row.Prix)}</span>
+                    </div>
+                    <div class="info-line">
+                        <span class="info-label">${escapeHtml(t("common.paid"))}</span>
+                        <span class="info-value value-info">${formatMoney(row.Vers)}</span>
+                    </div>
+                    <div class="info-line">
+                        <span class="info-label">${escapeHtml(t("common.status"))}</span>
+                        <span class="info-value">${debtBadge(row)}</span>
+                    </div>
+                </div>
+            </article>
+        `;
+
+        const renderRows = (newRows, append) => {
+            if (!append) {
+                tableBody.innerHTML = "";
+                cards.innerHTML = "";
+            }
+
+            if (newRows.length) {
+                tableBody.insertAdjacentHTML("beforeend", newRows.map(tableRow).join(""));
+                cards.insertAdjacentHTML("beforeend", newRows.map(cardRow).join(""));
+            }
+
+            const empty = state.rows.length === 0;
+            tableState.style.display = empty ? "flex" : "none";
+            tableState.textContent = empty ? t("sales.empty") : "";
+            cards.innerHTML = empty ? `<div class="state-row">${escapeHtml(t("sales.empty"))}</div>` : cards.innerHTML;
+            loadMoreButton.style.display = state.hasMore ? "inline-flex" : "none";
+            loadMoreButton.disabled = !state.hasMore || state.loading;
+            loadMoreButton.textContent = state.hasMore ? t("common.load_more") : t("sales.end");
+            renderSummary();
+        };
+
+        const loadSales = async ({ reset = false } = {}) => {
+            if (state.loading || (!state.hasMore && !reset)) return;
+            state.loading = true;
+            setLoading(loadMoreButton, true);
+
+            if (reset) {
+                state.page = 0;
+                state.hasMore = true;
+                state.rows = [];
+                tableBody.innerHTML = "";
+                cards.innerHTML = "";
+                tableState.innerHTML = '<span class="spinner" aria-hidden="true"></span>';
+                tableState.style.display = "flex";
+                renderSummary();
+            }
+
+            try {
+                const nextPage = state.page + 1;
+                const payload = await apiGet("/api/v1/sales", {
+                    ...filters(),
+                    page: nextPage
+                });
+
+                const rows = Array.isArray(payload.data) ? payload.data : [];
+                state.page = nextPage;
+                state.hasMore = Boolean(payload.meta && payload.meta.has_more);
+                state.rows = reset ? rows : state.rows.concat(rows);
+                renderRows(rows, !reset);
+            } catch (error) {
+                tableState.style.display = "flex";
+                tableState.textContent = error.message || t("sales.load_error");
+                cards.innerHTML = `<div class="state-row">${escapeHtml(error.message || t("sales.load_error"))}</div>`;
+            } finally {
+                state.loading = false;
+                setLoading(loadMoreButton, false);
+                loadMoreButton.disabled = !state.hasMore;
+                if (!state.hasMore && state.rows.length > 0) {
+                    loadMoreButton.textContent = t("sales.end");
+                }
+            }
+        };
+
+        form.addEventListener("submit", (event) => {
+            event.preventDefault();
+            loadSales({ reset: true });
+        });
+
+        form.search.addEventListener("input", debounce(() => loadSales({ reset: true })));
+        resetButton.addEventListener("click", () => {
+            form.reset();
+            loadSales({ reset: true });
+        });
+        loadMoreButton.addEventListener("click", () => loadSales());
+
+        loadSales({ reset: true });
+    })();
+</script>
+
+</body>
+</html>
