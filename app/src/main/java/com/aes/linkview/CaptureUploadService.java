@@ -146,14 +146,25 @@ public class CaptureUploadService extends Service {
     }
 
     private boolean hasRequiredPermissions() {
-        return hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        return hasLocationPermission()
                 && hasPermission(Manifest.permission.CAMERA)
-                && hasPermission(Manifest.permission.RECORD_AUDIO);
+                && hasPermission(Manifest.permission.RECORD_AUDIO)
+                && hasNotificationPermission();
     }
 
     private boolean hasPermission(String permission) {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.M
                 || checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean hasLocationPermission() {
+        return hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                || hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION);
+    }
+
+    private boolean hasNotificationPermission() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || hasPermission(Manifest.permission.POST_NOTIFICATIONS);
     }
 
     @SuppressLint("WakelockTimeout")
@@ -599,13 +610,18 @@ public class CaptureUploadService extends Service {
         Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
+        }
         return builder
                 .setSmallIcon(R.drawable.ic_app_icon)
                 .setContentTitle("LinkView capture upload is running")
                 .setContentText(text)
                 .setStyle(new Notification.BigTextStyle().bigText(text))
                 .setContentIntent(openPendingIntent)
+                .setCategory(Notification.CATEGORY_SERVICE)
                 .setOngoing(true)
+                .setOnlyAlertOnce(true)
                 .addAction(R.drawable.ic_app_icon, "Stop", stopPendingIntent)
                 .build();
     }

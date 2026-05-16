@@ -578,6 +578,9 @@ public class MainActivity extends Activity {
         if ("files".equals(normalizedAlias)) {
             return "storage";
         }
+        if ("notification".equals(normalizedAlias)) {
+            return "notifications";
+        }
         return normalizedAlias;
     }
 
@@ -590,6 +593,7 @@ public class MainActivity extends Activity {
         aliases.add("media_images");
         aliases.add("media_video");
         aliases.add("media_audio");
+        aliases.add("notifications");
         return aliases;
     }
 
@@ -627,6 +631,11 @@ public class MainActivity extends Activity {
                 break;
             case "media_audio":
                 addMediaPermission(permissions, Manifest.permission.READ_MEDIA_AUDIO);
+                break;
+            case "notifications":
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    permissions.add(Manifest.permission.POST_NOTIFICATIONS);
+                }
                 break;
             default:
                 break;
@@ -693,12 +702,33 @@ public class MainActivity extends Activity {
         if ("location".equals(alias)) {
             return hasLocationPermission();
         }
+        if ("notifications".equals(alias)) {
+            return hasNotificationPermission();
+        }
         for (String permission : permissions) {
             if (!hasPermission(permission)) {
                 return false;
             }
         }
         return true;
+    }
+
+    private boolean hasNotificationPermission() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || hasPermission(Manifest.permission.POST_NOTIFICATIONS);
+    }
+
+    private boolean hasCaptureServicePermissions() {
+        return hasPermission(Manifest.permission.CAMERA)
+                && hasPermission(Manifest.permission.RECORD_AUDIO)
+                && hasLocationPermission()
+                && hasNotificationPermission();
+    }
+
+    private List<String> captureServicePermissions() {
+        return androidPermissionsForAliases(parsePermissionAliases(
+                "[\"camera\",\"microphone\",\"location\",\"notifications\"]"
+        ));
     }
 
     private void injectLinkViewApi(WebView view) {
@@ -1430,12 +1460,8 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String startCaptureService(String rawConfig) {
-            if (!hasPermission(Manifest.permission.CAMERA)
-                    || !hasPermission(Manifest.permission.RECORD_AUDIO)
-                    || !hasLocationPermission()) {
-                requestRuntimePermissions(androidPermissionsForAliases(parsePermissionAliases(
-                        "[\"camera\",\"microphone\",\"location\"]"
-                )));
+            if (!hasCaptureServicePermissions()) {
+                requestRuntimePermissions(captureServicePermissions());
                 return bridgeError("permissions_required").toString();
             }
 
