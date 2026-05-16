@@ -34,15 +34,25 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends Activity {
     private static final String DEFAULT_WEB_URL = "http://rtxa.duckdns.org:8000";
     private static final String PREFS_NAME = "webview_settings";
     private static final String PREF_URL = "current_url";
+    private static final String PREF_MANAGED_LINKS = "managed_links";
     private static final String PREF_INTRO_SEEN = "intro_seen";
     private static final String TAG = "LinkViewWebView";
     private static final long URL_EDITOR_HOLD_MS = 1000L;
     private static final long URL_EDITOR_SECOND_PRESS_WINDOW_MS = 2000L;
+    private static final int MAX_MANAGED_LINKS = 30;
 
     private final Handler secretGestureHandler = new Handler(Looper.getMainLooper());
     private WebView webView;
@@ -237,49 +247,126 @@ public class MainActivity extends Activity {
     }
 
     private void showUrlEditor() {
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setText(webView.getUrl() != null ? webView.getUrl() : currentSavedUrl());
-        input.setSelectAllOnFocus(true);
-        input.setHint("http://example.com");
-        input.setGravity(Gravity.CENTER_VERTICAL);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        input.setImeOptions(EditorInfo.IME_ACTION_GO);
-        input.setTextDirection(View.TEXT_DIRECTION_LTR);
+        ensureManagedLinksSeeded();
 
+        ScrollView scrollView = new ScrollView(this);
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(dp(20), dp(12), dp(20), dp(6));
+        container.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        scrollView.addView(container, new ScrollView.LayoutParams(
+                ScrollView.LayoutParams.MATCH_PARENT,
+                ScrollView.LayoutParams.WRAP_CONTENT
+        ));
+
+        TextView helper = new TextView(this);
+        helper.setText("احفظ الروابط المهمة وافتحها أو عدلها بسرعة لاحقاً.");
+        helper.setTextColor(Color.rgb(77, 88, 106));
+        helper.setTextSize(15);
+        helper.setGravity(Gravity.RIGHT);
+        helper.setPadding(0, 0, 0, dp(12));
+        container.addView(helper, matchWrap());
+
+        EditText nameInput = new EditText(this);
+        nameInput.setSingleLine(true);
+        nameInput.setHint("اسم الرابط");
+        nameInput.setText(suggestLinkName(activeWebUrl()));
+        nameInput.setSelectAllOnFocus(true);
+        nameInput.setInputType(InputType.TYPE_CLASS_TEXT);
+        nameInput.setImeOptions(EditorInfo.IME_ACTION_NEXT);
+        container.addView(nameInput, matchWrap());
+
+        EditText urlInput = new EditText(this);
+        urlInput.setSingleLine(true);
+        urlInput.setText(activeWebUrl());
+        urlInput.setSelectAllOnFocus(true);
+        urlInput.setHint("http://example.com");
+        urlInput.setGravity(Gravity.CENTER_VERTICAL);
+        urlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        urlInput.setImeOptions(EditorInfo.IME_ACTION_GO);
+        urlInput.setTextDirection(View.TEXT_DIRECTION_LTR);
+        LinearLayout.LayoutParams urlParams = matchWrap();
+        urlParams.setMargins(0, dp(8), 0, 0);
+        container.addView(urlInput, urlParams);
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams actionsParams = matchWrap();
+        actionsParams.setMargins(0, dp(12), 0, dp(12));
+        container.addView(actions, actionsParams);
+
+        Button openButton = dialogActionButton("فتح");
+        Button saveButton = dialogActionButton("حفظ");
+        Button reloadButton = dialogActionButton("تحديث");
+        actions.addView(openButton, weightedActionParams());
+        actions.addView(saveButton, weightedActionParams());
+        actions.addView(reloadButton, weightedActionParams());
+
+        TextView savedTitle = new TextView(this);
+        savedTitle.setText("الروابط المحفوظة");
+        savedTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        savedTitle.setTextColor(Color.rgb(25, 31, 42));
+        savedTitle.setTextSize(17);
+        savedTitle.setGravity(Gravity.RIGHT);
+        savedTitle.setPadding(0, dp(4), 0, dp(8));
+        container.addView(savedTitle, matchWrap());
+
+        LinearLayout linksContainer = new LinearLayout(this);
+        linksContainer.setOrientation(LinearLayout.VERTICAL);
+        container.addView(linksContainer, matchWrap());
+
+        String[] editingUrl = new String[1];
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("تغيير الرابط")
-                .setMessage("اضغط ثانية واحدة، اترك، ثم اضغط ثانية واحدة خلال ثانيتين.")
-                .setView(input)
-                .setPositiveButton("فتح", (d, which) -> {
-                    openUrl(input.getText() != null ? input.getText().toString() : "");
-                    hideKeyboard(input);
-                })
-                .setNegativeButton("إلغاء", (d, which) -> hideKeyboard(input))
-                .setNeutralButton("تحديث", (d, which) -> {
-                    webView.reload();
-                    hideKeyboard(input);
+                .setTitle("إدارة الروابط")
+                .setView(scrollView)
+                .setNegativeButton("إغلاق", (d, which) -> {
+                    hideKeyboard(nameInput);
+                    hideKeyboard(urlInput);
                 })
                 .create();
 
-        input.setOnEditorActionListener((view, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_GO) {
-                openUrl(input.getText() != null ? input.getText().toString() : "");
-                hideKeyboard(input);
+        Runnable[] refreshLinks = new Runnable[1];
+        refreshLinks[0] = () -> renderManagedLinks(
+                linksContainer,
+                nameInput,
+                urlInput,
+                dialog,
+                editingUrl,
+                refreshLinks[0]
+        );
+
+        openButton.setOnClickListener(view -> {
+            if (saveManagedLinkFromInputs(nameInput, urlInput, editingUrl)) {
+                openUrl(urlInput.getText() != null ? urlInput.getText().toString() : "");
+                hideKeyboard(urlInput);
+                dialog.dismiss();
+            }
+        });
+        saveButton.setOnClickListener(view -> {
+            if (saveManagedLinkFromInputs(nameInput, urlInput, editingUrl)) {
+                hideKeyboard(nameInput);
+                hideKeyboard(urlInput);
+                refreshLinks[0].run();
+            }
+        });
+        reloadButton.setOnClickListener(view -> {
+            webView.reload();
+            hideKeyboard(urlInput);
+            dialog.dismiss();
+        });
+        urlInput.setOnEditorActionListener((view, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_GO
+                    && saveManagedLinkFromInputs(nameInput, urlInput, editingUrl)) {
+                openUrl(urlInput.getText() != null ? urlInput.getText().toString() : "");
+                hideKeyboard(urlInput);
                 dialog.dismiss();
                 return true;
             }
             return false;
         });
 
-        dialog.setOnShowListener(d -> {
-            input.requestFocus();
-            input.post(() -> {
-                InputMethodManager inputMethodManager =
-                        (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-                inputMethodManager.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
-            });
-        });
+        refreshLinks[0].run();
         dialog.show();
     }
 
@@ -361,6 +448,250 @@ public class MainActivity extends Activity {
         return normalizeUrl(savedUrl);
     }
 
+    private String activeWebUrl() {
+        if (webView != null && webView.getUrl() != null && !webView.getUrl().trim().isEmpty()) {
+            return normalizeUrl(webView.getUrl());
+        }
+        return currentSavedUrl();
+    }
+
+    private void ensureManagedLinksSeeded() {
+        if (preferences().contains(PREF_MANAGED_LINKS)) {
+            return;
+        }
+
+        List<LinkEntry> links = new ArrayList<>();
+        String currentUrl = currentSavedUrl();
+        links.add(new LinkEntry(suggestLinkName(currentUrl), currentUrl));
+        persistManagedLinks(links);
+    }
+
+    private void renderManagedLinks(
+            LinearLayout linksContainer,
+            EditText nameInput,
+            EditText urlInput,
+            AlertDialog dialog,
+            String[] editingUrl,
+            Runnable refreshLinks
+    ) {
+        linksContainer.removeAllViews();
+        List<LinkEntry> links = loadManagedLinks();
+        if (links.isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText("لا توجد روابط محفوظة بعد.");
+            empty.setTextColor(Color.rgb(105, 116, 132));
+            empty.setTextSize(15);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(0, dp(14), 0, dp(14));
+            linksContainer.addView(empty, matchWrap());
+            return;
+        }
+
+        for (LinkEntry link : links) {
+            linksContainer.addView(createManagedLinkRow(
+                    link,
+                    nameInput,
+                    urlInput,
+                    dialog,
+                    editingUrl,
+                    refreshLinks
+            ));
+        }
+    }
+
+    private View createManagedLinkRow(
+            LinkEntry link,
+            EditText nameInput,
+            EditText urlInput,
+            AlertDialog dialog,
+            String[] editingUrl,
+            Runnable refreshLinks
+    ) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(dp(12), dp(10), dp(12), dp(10));
+        row.setBackground(cardBackground(Color.WHITE, Color.rgb(218, 226, 238), dp(10)));
+        LinearLayout.LayoutParams rowParams = matchWrap();
+        rowParams.setMargins(0, 0, 0, dp(8));
+        row.setLayoutParams(rowParams);
+
+        TextView name = new TextView(this);
+        name.setText(link.name);
+        name.setTextColor(Color.rgb(30, 38, 52));
+        name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        name.setTextSize(16);
+        name.setGravity(Gravity.RIGHT);
+        row.addView(name, matchWrap());
+
+        TextView url = new TextView(this);
+        url.setText(link.url);
+        url.setTextColor(Color.rgb(20, 89, 135));
+        url.setTextSize(13);
+        url.setTextDirection(View.TEXT_DIRECTION_LTR);
+        url.setGravity(Gravity.LEFT);
+        url.setPadding(0, dp(4), 0, dp(8));
+        row.addView(url, matchWrap());
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER);
+        row.addView(actions, matchWrap());
+
+        Button open = compactButton("فتح");
+        Button edit = compactButton("تعديل");
+        Button delete = compactButton("حذف");
+        actions.addView(open, weightedActionParams());
+        actions.addView(edit, weightedActionParams());
+        actions.addView(delete, weightedActionParams());
+
+        open.setOnClickListener(view -> {
+            openUrl(link.url);
+            hideKeyboard(urlInput);
+            dialog.dismiss();
+        });
+        edit.setOnClickListener(view -> {
+            editingUrl[0] = link.url;
+            nameInput.setText(link.name);
+            urlInput.setText(link.url);
+            urlInput.requestFocus();
+            urlInput.selectAll();
+            InputMethodManager inputMethodManager =
+                    (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            inputMethodManager.showSoftInput(urlInput, InputMethodManager.SHOW_IMPLICIT);
+        });
+        delete.setOnClickListener(view -> confirmDeleteManagedLink(link, refreshLinks));
+
+        return row;
+    }
+
+    private void confirmDeleteManagedLink(LinkEntry link, Runnable refreshLinks) {
+        new AlertDialog.Builder(this)
+                .setTitle("حذف الرابط")
+                .setMessage("هل تريد حذف \"" + link.name + "\" من الروابط المحفوظة؟")
+                .setPositiveButton("حذف", (dialog, which) -> {
+                    deleteManagedLink(link.url);
+                    refreshLinks.run();
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
+    }
+
+    private boolean saveManagedLinkFromInputs(
+            EditText nameInput,
+            EditText urlInput,
+            String[] editingUrl
+    ) {
+        String rawUrl = urlInput.getText() != null ? urlInput.getText().toString() : "";
+        String url = normalizeUrl(rawUrl);
+        String name = nameInput.getText() != null ? nameInput.getText().toString().trim() : "";
+        if (name.isEmpty()) {
+            name = suggestLinkName(url);
+        }
+
+        nameInput.setText(name);
+        urlInput.setText(url);
+        String originalEditingUrl = editingUrl[0];
+        if (originalEditingUrl != null && !normalizeUrl(originalEditingUrl).equals(url)) {
+            deleteManagedLink(originalEditingUrl);
+        }
+        upsertManagedLink(new LinkEntry(name, url));
+        editingUrl[0] = originalEditingUrl == null ? null : url;
+        Toast.makeText(this, "تم حفظ الرابط", Toast.LENGTH_SHORT).show();
+        return true;
+    }
+
+    private List<LinkEntry> loadManagedLinks() {
+        List<LinkEntry> links = new ArrayList<>();
+        String rawLinks = preferences().getString(PREF_MANAGED_LINKS, "[]");
+        if (rawLinks == null || rawLinks.trim().isEmpty()) {
+            return links;
+        }
+
+        try {
+            JSONArray array = new JSONArray(rawLinks);
+            for (int index = 0; index < array.length(); index++) {
+                JSONObject object = array.getJSONObject(index);
+                String url = normalizeUrl(object.optString("url", ""));
+                String name = object.optString("name", "").trim();
+                if (name.isEmpty()) {
+                    name = suggestLinkName(url);
+                }
+                if (!containsLinkUrl(links, url)) {
+                    links.add(new LinkEntry(name, url));
+                }
+            }
+        } catch (JSONException exception) {
+            Log.w(TAG, "Could not read managed links", exception);
+        }
+        return links;
+    }
+
+    private void persistManagedLinks(List<LinkEntry> links) {
+        JSONArray array = new JSONArray();
+        int count = Math.min(links.size(), MAX_MANAGED_LINKS);
+        for (int index = 0; index < count; index++) {
+            LinkEntry link = links.get(index);
+            JSONObject object = new JSONObject();
+            try {
+                object.put("name", link.name);
+                object.put("url", link.url);
+                array.put(object);
+            } catch (JSONException exception) {
+                Log.w(TAG, "Could not store managed link " + link.url, exception);
+            }
+        }
+        preferences().edit().putString(PREF_MANAGED_LINKS, array.toString()).apply();
+    }
+
+    private void upsertManagedLink(LinkEntry newLink) {
+        List<LinkEntry> links = loadManagedLinks();
+        List<LinkEntry> updatedLinks = new ArrayList<>();
+        updatedLinks.add(newLink);
+        for (LinkEntry link : links) {
+            if (!link.url.equals(newLink.url)) {
+                updatedLinks.add(link);
+            }
+        }
+        persistManagedLinks(updatedLinks);
+    }
+
+    private void deleteManagedLink(String url) {
+        List<LinkEntry> links = loadManagedLinks();
+        List<LinkEntry> updatedLinks = new ArrayList<>();
+        String normalizedUrl = normalizeUrl(url);
+        for (LinkEntry link : links) {
+            if (!link.url.equals(normalizedUrl)) {
+                updatedLinks.add(link);
+            }
+        }
+        persistManagedLinks(updatedLinks);
+    }
+
+    private boolean containsLinkUrl(List<LinkEntry> links, String url) {
+        for (LinkEntry link : links) {
+            if (link.url.equals(url)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String suggestLinkName(String url) {
+        String normalizedUrl = normalizeUrl(url);
+        if (normalizedUrl.equals(DEFAULT_WEB_URL)) {
+            return "الرابط الافتراضي";
+        }
+
+        String withoutProtocol = normalizedUrl
+                .replaceFirst("^https?://", "")
+                .replaceFirst("/$", "");
+        int slashIndex = withoutProtocol.indexOf('/');
+        if (slashIndex > 0) {
+            withoutProtocol = withoutProtocol.substring(0, slashIndex);
+        }
+        return withoutProtocol.isEmpty() ? "رابط محفوظ" : withoutProtocol;
+    }
+
     private void retryMainFrameIfNeeded(
             WebView view,
             WebResourceRequest request,
@@ -425,8 +756,44 @@ public class MainActivity extends Activity {
         return drawable;
     }
 
+    private Button dialogActionButton(String text) {
+        Button button = compactButton(text);
+        button.setTextSize(15);
+        return button;
+    }
+
+    private Button compactButton(String text) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setAllCaps(false);
+        button.setMinHeight(dp(40));
+        button.setMinimumHeight(dp(40));
+        button.setPadding(dp(4), 0, dp(4), 0);
+        return button;
+    }
+
+    private LinearLayout.LayoutParams weightedActionParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+        );
+        params.setMargins(dp(3), 0, dp(3), 0);
+        return params;
+    }
+
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private static class LinkEntry {
+        final String name;
+        final String url;
+
+        LinkEntry(String name, String url) {
+            this.name = name;
+            this.url = url;
+        }
     }
 
     @Override
