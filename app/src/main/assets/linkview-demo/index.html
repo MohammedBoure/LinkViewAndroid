@@ -82,6 +82,37 @@
       </article>
     </section>
 
+    <section class="panel stream-panel">
+      <div class="tile-head">
+        <div>
+          <h2>إرسال مباشر للسيرفر</h2>
+          <p class="hint">يعمل فقط بعد الضغط على بدء الإرسال ويستمر ما دامت هذه الصفحة مفتوحة.</p>
+        </div>
+        <div id="serverStreamState" class="badge pending">متوقف</div>
+      </div>
+
+      <div class="settings-grid">
+        <label>
+          <span>Server URL</span>
+          <input id="serverUrlInput" type="url" inputmode="url" placeholder="http://192.168.1.10:8765">
+        </label>
+        <label>
+          <span>Device ID</span>
+          <input id="deviceIdInput" type="text" placeholder="phone-1">
+        </label>
+        <label>
+          <span>API Token</span>
+          <input id="apiTokenInput" type="password" autocomplete="off" placeholder="لا تحفظه داخل GitHub">
+        </label>
+      </div>
+
+      <div class="actions stream-actions">
+        <button id="startServerStreamBtn">بدء الإرسال</button>
+        <button id="stopServerStreamBtn">إيقاف الإرسال</button>
+      </div>
+      <p id="serverStreamLog" class="reading">لم يبدأ الإرسال بعد.</p>
+    </section>
+
     <section class="panel">
       <div class="tile-head">
         <h2>الجسر</h2>

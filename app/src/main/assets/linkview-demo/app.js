@@ -21,6 +21,11 @@ const ui = {
   lngValue: document.querySelector("#lngValue"),
   fileInput: document.querySelector("#fileInput"),
   fileSummary: document.querySelector("#fileSummary"),
+  serverStreamState: document.querySelector("#serverStreamState"),
+  serverStreamLog: document.querySelector("#serverStreamLog"),
+  serverUrlInput: document.querySelector("#serverUrlInput"),
+  deviceIdInput: document.querySelector("#deviceIdInput"),
+  apiTokenInput: document.querySelector("#apiTokenInput"),
 };
 
 function show(value) {
@@ -57,8 +62,27 @@ async function refreshPermissions() {
   show({
     permissions: payload,
     device: LinkView.getDeviceInfo(),
+    captureDefaults: LinkView.getCaptureDefaults ? maskSecret(LinkView.getCaptureDefaults()) : null,
     links: LinkView.getLinks(),
   });
+}
+
+function maskSecret(value) {
+  if (!value || typeof value !== "object") return value;
+  return JSON.parse(JSON.stringify(value, (key, nestedValue) => {
+    if (key.toLowerCase().includes("token") && nestedValue) {
+      return "configured";
+    }
+    return nestedValue;
+  }));
+}
+
+function applyCaptureDefaults() {
+  if (!hasNativeBridge() || !LinkView.getCaptureDefaults) return;
+  const defaults = LinkView.getCaptureDefaults();
+  ui.serverUrlInput.value = localStorage.getItem("linkview.serverUrl") || defaults.server_url || "";
+  ui.deviceIdInput.value = localStorage.getItem("linkview.deviceId") || defaults.device_id || "linkview-device";
+  ui.apiTokenInput.value = defaults.api_token || "";
 }
 
 async function requestPermission(name) {
@@ -209,6 +233,64 @@ function updateFileSummary() {
   });
 }
 
+function captureConfig() {
+  return {
+    server_url: ui.serverUrlInput.value.trim(),
+    api_token: ui.apiTokenInput.value,
+    device_id: ui.deviceIdInput.value.trim() || "linkview-device",
+    location_interval_ms: 10000,
+    audio_chunk_ms: 10000,
+    photo_interval_ms: 15000,
+  };
+}
+
+function setServerStreamState(running, message) {
+  ui.serverStreamState.textContent = running ? "يعمل" : "متوقف";
+  ui.serverStreamState.className = `badge ${running ? "ok" : "pending"}`;
+  ui.serverStreamLog.textContent = message;
+}
+
+async function startServerStream() {
+  if (!hasNativeBridge() || !LinkView.startCaptureService) {
+    setServerStreamState(false, "الجسر لا يدعم خدمة الإرسال native.");
+    return;
+  }
+
+  const config = captureConfig();
+  if (!config.server_url) {
+    setServerStreamState(false, "أدخل Server URL أولاً.");
+    return;
+  }
+
+  localStorage.setItem("linkview.serverUrl", config.server_url);
+  localStorage.setItem("linkview.deviceId", config.device_id);
+
+  try {
+    await LinkView.requestPermissions(["camera", "microphone", "location"]);
+    const response = LinkView.startCaptureService(config);
+    show(maskSecret({ service: response, config }));
+    if (response.ok) {
+      setServerStreamState(true, "الخدمة تعمل الآن مع إشعار دائم في شريط الإشعارات.");
+    } else {
+      setServerStreamState(false, response.error || "تعذر تشغيل الخدمة.");
+    }
+  } catch (error) {
+    show(error);
+    setServerStreamState(false, "تم رفض الصلاحيات أو تعذر تشغيل الخدمة.");
+  }
+}
+
+function stopServerStream() {
+  if (!hasNativeBridge() || !LinkView.stopCaptureService) {
+    setServerStreamState(false, "الجسر لا يدعم إيقاف الخدمة.");
+    return;
+  }
+
+  const response = LinkView.stopCaptureService();
+  show(response);
+  setServerStreamState(false, "تم إرسال أمر إيقاف الخدمة.");
+}
+
 function bind() {
   document.querySelector("#cameraPermissionBtn").addEventListener("click", () => requestPermission("camera"));
   document.querySelector("#microphonePermissionBtn").addEventListener("click", () => requestPermission("microphone"));
@@ -220,11 +302,14 @@ function bind() {
   document.querySelector("#micStopBtn").addEventListener("click", stopMicrophone);
   document.querySelector("#locationReadBtn").addEventListener("click", readLocation);
   document.querySelector("#refreshBtn").addEventListener("click", refreshPermissions);
+  document.querySelector("#startServerStreamBtn").addEventListener("click", startServerStream);
+  document.querySelector("#stopServerStreamBtn").addEventListener("click", stopServerStream);
   ui.fileInput.addEventListener("change", updateFileSummary);
 }
 
 document.addEventListener("linkviewready", refreshPermissions);
 document.addEventListener("DOMContentLoaded", () => {
   bind();
+  applyCaptureDefaults();
   refreshPermissions();
 });

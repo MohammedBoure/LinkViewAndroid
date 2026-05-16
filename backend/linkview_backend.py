@@ -417,6 +417,21 @@ def query_value(query: dict[str, list[str]], name: str, default: str) -> str:
     return values[0] or default
 
 
+def load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        name = name.strip()
+        value = value.strip().strip('"').strip("'")
+        if name and name not in os.environ:
+            os.environ[name] = value
+
+
 class LinkViewHTTPServer(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], handler: type[BaseHTTPRequestHandler], settings: Settings):
         super().__init__(address, handler)
@@ -424,6 +439,8 @@ class LinkViewHTTPServer(ThreadingHTTPServer):
 
 
 def settings_from_args() -> Settings:
+    load_env_file(Path(__file__).with_name(".env"))
+
     parser = argparse.ArgumentParser(description="Run the LinkView Python backend.")
     parser.add_argument("--host", default=os.getenv("LINKVIEW_BACKEND_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("LINKVIEW_BACKEND_PORT", "8765")))

@@ -6,7 +6,8 @@ Standalone Python backend for receiving continuous data from LinkView web apps. 
 
 ```powershell
 cd backend
-$env:LINKVIEW_API_TOKEN = "change-me"
+Copy-Item .env.example .env
+notepad .env
 python .\linkview_backend.py --host 0.0.0.0 --port 8765
 ```
 
@@ -16,7 +17,7 @@ For local-only development, keep the default host:
 python .\linkview_backend.py
 ```
 
-Data is stored under `backend/data/` by default and is ignored by git.
+Data is stored under `backend/data/` by default and is ignored by git. Local `.env` files are ignored too; commit only `.env.example`.
 
 ## Security
 
