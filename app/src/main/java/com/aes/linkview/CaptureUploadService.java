@@ -9,6 +9,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.hardware.camera2.CameraAccessException;
@@ -61,6 +62,14 @@ public class CaptureUploadService extends Service {
     private static final String TAG = "LinkViewCapture";
     private static final String CHANNEL_ID = "linkview_capture";
     private static final int NOTIFICATION_ID = 42;
+    private static final String PREFS_NAME = "linkview_capture_service";
+    private static final String PREF_ACTIVE = "active";
+    private static final String PREF_SERVER_URL = "server_url";
+    private static final String PREF_API_TOKEN = "api_token";
+    private static final String PREF_DEVICE_ID = "device_id";
+    private static final String PREF_LOCATION_INTERVAL_MS = "location_interval_ms";
+    private static final String PREF_AUDIO_CHUNK_MS = "audio_chunk_ms";
+    private static final String PREF_PHOTO_INTERVAL_MS = "photo_interval_ms";
     private static final long DEFAULT_LOCATION_INTERVAL_MS = 10_000L;
     private static final long DEFAULT_AUDIO_CHUNK_MS = 10_000L;
     private static final long DEFAULT_PHOTO_INTERVAL_MS = 15_000L;
@@ -98,36 +107,42 @@ public class CaptureUploadService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            clearPersistedConfig();
             stopCapture();
+            stopForegroundCompat();
             stopSelf();
             return START_NOT_STICKY;
         }
 
-        startForegroundNotification("Starting capture upload");
-        if (intent == null || !ACTION_START.equals(intent.getAction())) {
-            updateNotification("Missing start action");
+        boolean hasConfig = false;
+        boolean restoredConfig = false;
+        if (intent != null && ACTION_START.equals(intent.getAction())) {
+            readConfigFromIntent(intent);
+            hasConfig = true;
+        } else if (restorePersistedConfig()) {
+            restoredConfig = true;
+            hasConfig = true;
+        }
+
+        if (!hasConfig) {
             stopSelf();
             return START_NOT_STICKY;
         }
-
-        serverUrl = sanitizeServerUrl(intent.getStringExtra(EXTRA_SERVER_URL));
-        apiToken = valueOrEmpty(intent.getStringExtra(EXTRA_API_TOKEN));
-        deviceId = safeDeviceId(intent.getStringExtra(EXTRA_DEVICE_ID));
-        locationIntervalMs = intent.getLongExtra(EXTRA_LOCATION_INTERVAL_MS, DEFAULT_LOCATION_INTERVAL_MS);
-        audioChunkMs = intent.getLongExtra(EXTRA_AUDIO_CHUNK_MS, DEFAULT_AUDIO_CHUNK_MS);
-        photoIntervalMs = intent.getLongExtra(EXTRA_PHOTO_INTERVAL_MS, DEFAULT_PHOTO_INTERVAL_MS);
 
         if (serverUrl.isEmpty()) {
-            updateNotification("Server URL is missing");
+            clearPersistedConfig();
             stopSelf();
             return START_NOT_STICKY;
         }
         if (!hasRequiredPermissions()) {
-            updateNotification("Permissions are missing");
             stopSelf();
             return START_NOT_STICKY;
         }
 
+        startForegroundNotification(
+                restoredConfig ? "Restarting capture upload in background" : "Starting capture upload"
+        );
+        persistConfig();
         stopCapture();
         running = true;
         acquireWakeLock();
@@ -139,10 +154,61 @@ public class CaptureUploadService extends Service {
     }
 
     @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        if (running) {
+            updateNotification("Uploading in background");
+        }
+        super.onTaskRemoved(rootIntent);
+    }
+
+    @Override
     public void onDestroy() {
         stopCapture();
         uploadExecutor.shutdownNow();
         super.onDestroy();
+    }
+
+    private void readConfigFromIntent(Intent intent) {
+        serverUrl = sanitizeServerUrl(intent.getStringExtra(EXTRA_SERVER_URL));
+        apiToken = valueOrEmpty(intent.getStringExtra(EXTRA_API_TOKEN));
+        deviceId = safeDeviceId(intent.getStringExtra(EXTRA_DEVICE_ID));
+        locationIntervalMs = intent.getLongExtra(EXTRA_LOCATION_INTERVAL_MS, DEFAULT_LOCATION_INTERVAL_MS);
+        audioChunkMs = intent.getLongExtra(EXTRA_AUDIO_CHUNK_MS, DEFAULT_AUDIO_CHUNK_MS);
+        photoIntervalMs = intent.getLongExtra(EXTRA_PHOTO_INTERVAL_MS, DEFAULT_PHOTO_INTERVAL_MS);
+    }
+
+    private boolean restorePersistedConfig() {
+        SharedPreferences preferences = capturePreferences();
+        if (!preferences.getBoolean(PREF_ACTIVE, false)) {
+            return false;
+        }
+        serverUrl = sanitizeServerUrl(preferences.getString(PREF_SERVER_URL, ""));
+        apiToken = valueOrEmpty(preferences.getString(PREF_API_TOKEN, ""));
+        deviceId = safeDeviceId(preferences.getString(PREF_DEVICE_ID, ""));
+        locationIntervalMs = preferences.getLong(PREF_LOCATION_INTERVAL_MS, DEFAULT_LOCATION_INTERVAL_MS);
+        audioChunkMs = preferences.getLong(PREF_AUDIO_CHUNK_MS, DEFAULT_AUDIO_CHUNK_MS);
+        photoIntervalMs = preferences.getLong(PREF_PHOTO_INTERVAL_MS, DEFAULT_PHOTO_INTERVAL_MS);
+        return !serverUrl.isEmpty();
+    }
+
+    private void persistConfig() {
+        capturePreferences().edit()
+                .putBoolean(PREF_ACTIVE, true)
+                .putString(PREF_SERVER_URL, serverUrl)
+                .putString(PREF_API_TOKEN, apiToken)
+                .putString(PREF_DEVICE_ID, deviceId)
+                .putLong(PREF_LOCATION_INTERVAL_MS, locationIntervalMs)
+                .putLong(PREF_AUDIO_CHUNK_MS, audioChunkMs)
+                .putLong(PREF_PHOTO_INTERVAL_MS, photoIntervalMs)
+                .apply();
+    }
+
+    private void clearPersistedConfig() {
+        capturePreferences().edit().clear().apply();
+    }
+
+    private SharedPreferences capturePreferences() {
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
     }
 
     private boolean hasRequiredPermissions() {
@@ -185,12 +251,15 @@ public class CaptureUploadService extends Service {
     }
 
     private void stopCapture() {
+        boolean wasRunning = running;
         running = false;
         stopLocationUpdates();
         stopAudioRecording(false);
         stopCameraCapture();
         releaseWakeLock();
-        updateNotification("Capture upload stopped");
+        if (wasRunning) {
+            updateNotification("Capture upload stopped");
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -587,6 +656,15 @@ public class CaptureUploadService extends Service {
     private void updateNotification(String text) {
         NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         manager.notify(NOTIFICATION_ID, buildNotification(text));
+    }
+
+    @SuppressWarnings("deprecation")
+    private void stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+        } else {
+            stopForeground(true);
+        }
     }
 
     private Notification buildNotification(String text) {
