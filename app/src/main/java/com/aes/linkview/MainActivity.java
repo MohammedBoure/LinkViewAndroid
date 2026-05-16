@@ -54,7 +54,7 @@ import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final String DEFAULT_WEB_URL = "http://qylad-server.duckdns.org/linkview/";
+    private static final String DEFAULT_WEB_URL = "http://sw4.duckdns.org/gitea";
     private static final String LOCAL_DEMO_URL = "file:///android_asset/linkview-demo/index.html";
     private static final String PREFS_NAME = "webview_settings";
     private static final String PREF_URL = "current_url";
