@@ -148,6 +148,7 @@ app/src/main/java/com/aes/linkview/MainActivity.java   Main Android activity and
 app/src/main/AndroidManifest.xml                       App manifest and permissions
 app/src/main/res/xml/network_security_config.xml       Cleartext HTTP configuration
 app/src/main/res/values/                               App name and theme resources
+backend/                                               Standalone Python receiver for location and media data
 android_page.html                                      Reference/snapshot web page, not packaged in the APK
 gradle/libs.versions.toml                              Gradle plugin and test dependency versions
 ```
