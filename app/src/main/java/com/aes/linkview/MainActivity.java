@@ -1,11 +1,13 @@
 package com.aes.linkview;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -23,6 +25,8 @@ import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.ConsoleMessage;
+import android.webkit.GeolocationPermissions;
+import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -50,6 +54,7 @@ public class MainActivity extends Activity {
     private static final String PREF_MANAGED_LINKS = "managed_links";
     private static final String PREF_INTRO_SEEN = "intro_seen";
     private static final String TAG = "LinkViewWebView";
+    private static final int APP_PERMISSION_REQUEST_CODE = 1001;
     private static final long URL_EDITOR_HOLD_MS = 1000L;
     private static final long URL_EDITOR_SECOND_PRESS_WINDOW_MS = 2000L;
     private static final int MAX_MANAGED_LINKS = 30;
@@ -62,11 +67,16 @@ public class MainActivity extends Activity {
     private long secondPressDeadline;
     private boolean pressStartedWithinSecondWindow;
     private Runnable pendingSecretHold;
+    private PermissionRequest pendingWebPermissionRequest;
+    private String pendingGeolocationOrigin;
+    private GeolocationPermissions.Callback pendingGeolocationCallback;
+    private boolean appPermissionRequestInFlight;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         configureSystemBars();
+        requestAppPermissions();
 
         if (hasSeenIntro()) {
             startWebView();
@@ -179,6 +189,33 @@ public class MainActivity extends Activity {
                 );
                 return true;
             }
+
+            @Override
+            public void onPermissionRequest(PermissionRequest request) {
+                runOnUiThread(() -> handleWebPermissionRequest(request));
+            }
+
+            @Override
+            public void onPermissionRequestCanceled(PermissionRequest request) {
+                if (pendingWebPermissionRequest == request) {
+                    pendingWebPermissionRequest = null;
+                }
+            }
+
+            @Override
+            public void onGeolocationPermissionsShowPrompt(
+                    String origin,
+                    GeolocationPermissions.Callback callback
+            ) {
+                if (hasLocationPermission()) {
+                    callback.invoke(origin, true, false);
+                    return;
+                }
+
+                pendingGeolocationOrigin = origin;
+                pendingGeolocationCallback = callback;
+                requestAppPermissions();
+            }
         });
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -224,6 +261,7 @@ public class MainActivity extends Activity {
         settings.setLoadWithOverviewMode(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        settings.setGeolocationEnabled(true);
 
         webView.setLongClickable(true);
         webView.setOnLongClickListener(view -> true);
@@ -244,6 +282,152 @@ public class MainActivity extends Activity {
         } else {
             super.onBackPressed();
         }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            String[] permissions,
+            int[] grantResults
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != APP_PERMISSION_REQUEST_CODE) {
+            return;
+        }
+
+        appPermissionRequestInFlight = false;
+        resolvePendingWebPermissionRequest();
+        resolvePendingGeolocationRequest();
+    }
+
+    private void requestAppPermissions() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || appPermissionRequestInFlight) {
+            return;
+        }
+
+        List<String> missingPermissions = missingPermissions(appRuntimePermissions());
+        if (!missingPermissions.isEmpty()) {
+            appPermissionRequestInFlight = true;
+            requestPermissions(
+                    missingPermissions.toArray(new String[0]),
+                    APP_PERMISSION_REQUEST_CODE
+            );
+        }
+    }
+
+    private List<String> appRuntimePermissions() {
+        List<String> permissions = new ArrayList<>();
+        permissions.add(Manifest.permission.CAMERA);
+        permissions.add(Manifest.permission.RECORD_AUDIO);
+        permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.READ_MEDIA_IMAGES);
+            permissions.add(Manifest.permission.READ_MEDIA_VIDEO);
+            permissions.add(Manifest.permission.READ_MEDIA_AUDIO);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                permissions.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED);
+            }
+        } else {
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            }
+        }
+
+        return permissions;
+    }
+
+    private List<String> missingPermissions(List<String> permissions) {
+        List<String> missingPermissions = new ArrayList<>();
+        for (String permission : permissions) {
+            if (!hasPermission(permission)) {
+                missingPermissions.add(permission);
+            }
+        }
+        return missingPermissions;
+    }
+
+    private boolean hasPermission(String permission) {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                || checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean hasLocationPermission() {
+        return hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                || hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION);
+    }
+
+    private void handleWebPermissionRequest(PermissionRequest request) {
+        List<String> requiredPermissions = androidPermissionsForWebResources(request.getResources());
+        List<String> missingPermissions = missingPermissions(requiredPermissions);
+        if (missingPermissions.isEmpty()) {
+            grantAllowedWebResources(request);
+            return;
+        }
+
+        pendingWebPermissionRequest = request;
+        requestAppPermissions();
+    }
+
+    private List<String> androidPermissionsForWebResources(String[] resources) {
+        List<String> permissions = new ArrayList<>();
+        for (String resource : resources) {
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                addPermissionIfMissing(permissions, Manifest.permission.RECORD_AUDIO);
+            } else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                addPermissionIfMissing(permissions, Manifest.permission.CAMERA);
+            }
+        }
+        return permissions;
+    }
+
+    private void addPermissionIfMissing(List<String> permissions, String permission) {
+        if (!permissions.contains(permission)) {
+            permissions.add(permission);
+        }
+    }
+
+    private void resolvePendingWebPermissionRequest() {
+        if (pendingWebPermissionRequest == null) {
+            return;
+        }
+
+        PermissionRequest request = pendingWebPermissionRequest;
+        pendingWebPermissionRequest = null;
+        grantAllowedWebResources(request);
+    }
+
+    private void grantAllowedWebResources(PermissionRequest request) {
+        List<String> grantedResources = new ArrayList<>();
+        for (String resource : request.getResources()) {
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
+                    && hasPermission(Manifest.permission.RECORD_AUDIO)) {
+                grantedResources.add(resource);
+            } else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)
+                    && hasPermission(Manifest.permission.CAMERA)) {
+                grantedResources.add(resource);
+            }
+        }
+
+        if (grantedResources.isEmpty()) {
+            request.deny();
+            return;
+        }
+        request.grant(grantedResources.toArray(new String[0]));
+    }
+
+    private void resolvePendingGeolocationRequest() {
+        if (pendingGeolocationCallback == null || pendingGeolocationOrigin == null) {
+            return;
+        }
+
+        GeolocationPermissions.Callback callback = pendingGeolocationCallback;
+        String origin = pendingGeolocationOrigin;
+        pendingGeolocationCallback = null;
+        pendingGeolocationOrigin = null;
+        callback.invoke(origin, hasLocationPermission(), false);
     }
 
     private void showUrlEditor() {
