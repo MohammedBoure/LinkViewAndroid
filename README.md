@@ -100,6 +100,16 @@ The bridge intentionally grants only the Android permissions already declared by
 
 Security note: every page loaded in the configured WebView can access this bridge, so production builds should load only trusted web apps.
 
+## Built-In Bridge Demo
+
+The APK includes a lightweight local web app for validating the native bridge:
+
+```text
+file:///android_asset/linkview-demo/index.html
+```
+
+It appears in the saved links manager as `اختبار LinkView`. The demo checks the injected bridge, requests permissions through `LinkView.requestPermissions()`, opens camera and microphone streams, reads geolocation, and verifies file selection through the WebView file picker.
+
 ## Requirements
 
 - Android Studio / Android SDK.

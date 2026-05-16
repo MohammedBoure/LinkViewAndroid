@@ -3,8 +3,10 @@ package com.aes.linkview;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
@@ -12,6 +14,7 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -34,6 +37,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.ValueCallback;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -51,12 +55,14 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
     private static final String DEFAULT_WEB_URL = "http://rtxa.duckdns.org:8000";
+    private static final String LOCAL_DEMO_URL = "file:///android_asset/linkview-demo/index.html";
     private static final String PREFS_NAME = "webview_settings";
     private static final String PREF_URL = "current_url";
     private static final String PREF_MANAGED_LINKS = "managed_links";
     private static final String PREF_INTRO_SEEN = "intro_seen";
     private static final String TAG = "LinkViewWebView";
     private static final int APP_PERMISSION_REQUEST_CODE = 1001;
+    private static final int FILE_CHOOSER_REQUEST_CODE = 1002;
     private static final long URL_EDITOR_HOLD_MS = 1000L;
     private static final long URL_EDITOR_SECOND_PRESS_WINDOW_MS = 2000L;
     private static final int MAX_MANAGED_LINKS = 30;
@@ -75,6 +81,7 @@ public class MainActivity extends Activity {
     private GeolocationPermissions.Callback pendingGeolocationCallback;
     private String pendingJsPermissionCallbackId;
     private List<String> pendingJsPermissionAliases;
+    private ValueCallback<Uri[]> pendingFilePathCallback;
     private boolean appPermissionRequestInFlight;
 
     @Override
@@ -221,6 +228,32 @@ public class MainActivity extends Activity {
                 pendingGeolocationCallback = callback;
                 requestAppPermissions();
             }
+
+            @Override
+            public boolean onShowFileChooser(
+                    WebView webView,
+                    ValueCallback<Uri[]> filePathCallback,
+                    FileChooserParams fileChooserParams
+            ) {
+                if (pendingFilePathCallback != null) {
+                    pendingFilePathCallback.onReceiveValue(null);
+                }
+                pendingFilePathCallback = filePathCallback;
+
+                Intent intent = fileChooserParams.createIntent();
+                try {
+                    startActivityForResult(intent, FILE_CHOOSER_REQUEST_CODE);
+                } catch (ActivityNotFoundException exception) {
+                    pendingFilePathCallback = null;
+                    Toast.makeText(
+                            MainActivity.this,
+                            "لا يوجد تطبيق لاختيار الملفات",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                    return false;
+                }
+                return true;
+            }
         });
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -269,6 +302,8 @@ public class MainActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
         settings.setGeolocationEnabled(true);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
 
         webView.addJavascriptInterface(new LinkViewBridge(), "LinkViewNative");
         webView.setLongClickable(true);
@@ -307,6 +342,20 @@ public class MainActivity extends Activity {
         resolvePendingWebPermissionRequest();
         resolvePendingGeolocationRequest();
         resolvePendingJsPermissionRequest();
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+            if (pendingFilePathCallback != null) {
+                Uri[] results = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+                pendingFilePathCallback.onReceiveValue(results);
+                pendingFilePathCallback = null;
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     private void requestAppPermissions() {
@@ -958,14 +1007,21 @@ public class MainActivity extends Activity {
     }
 
     private void ensureManagedLinksSeeded() {
-        if (preferences().contains(PREF_MANAGED_LINKS)) {
-            return;
+        List<LinkEntry> links = loadManagedLinks();
+        boolean changed = false;
+        if (!preferences().contains(PREF_MANAGED_LINKS) || links.isEmpty()) {
+            String currentUrl = currentSavedUrl();
+            links.add(new LinkEntry(suggestLinkName(currentUrl), currentUrl));
+            changed = true;
         }
 
-        List<LinkEntry> links = new ArrayList<>();
-        String currentUrl = currentSavedUrl();
-        links.add(new LinkEntry(suggestLinkName(currentUrl), currentUrl));
-        persistManagedLinks(links);
+        if (!containsLinkUrl(links, LOCAL_DEMO_URL)) {
+            links.add(new LinkEntry("اختبار LinkView", LOCAL_DEMO_URL));
+            changed = true;
+        }
+        if (changed) {
+            persistManagedLinks(links);
+        }
     }
 
     private void renderManagedLinks(
@@ -1180,6 +1236,9 @@ public class MainActivity extends Activity {
 
     private String suggestLinkName(String url) {
         String normalizedUrl = normalizeUrl(url);
+        if (normalizedUrl.equals(LOCAL_DEMO_URL)) {
+            return "اختبار LinkView";
+        }
         if (normalizedUrl.equals(DEFAULT_WEB_URL)) {
             return "الرابط الافتراضي";
         }
@@ -1219,7 +1278,9 @@ public class MainActivity extends Activity {
         if (trimmed.isEmpty()) {
             return DEFAULT_WEB_URL;
         }
-        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        if (trimmed.startsWith("http://")
+                || trimmed.startsWith("https://")
+                || trimmed.startsWith("file:///android_asset/")) {
             return trimmed;
         }
         return "http://" + trimmed;

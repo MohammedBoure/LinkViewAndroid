@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LinkView Bridge Demo</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="panel head">
+      <div>
+        <p class="eyebrow">LinkView</p>
+        <h1>اختبار الجسر الداخلي</h1>
+      </div>
+      <div id="bridgeState" class="badge pending">ينتظر</div>
+    </section>
+
+    <section class="grid">
+      <article class="panel tile" data-permission="camera">
+        <div class="tile-head">
+          <h2>الكاميرا</h2>
+          <span id="cameraState" class="dot"></span>
+        </div>
+        <video id="cameraPreview" playsinline muted></video>
+        <div class="actions">
+          <button id="cameraPermissionBtn">طلب</button>
+          <button id="cameraStartBtn">تشغيل</button>
+          <button id="cameraStopBtn">إيقاف</button>
+        </div>
+      </article>
+
+      <article class="panel tile" data-permission="microphone">
+        <div class="tile-head">
+          <h2>الميكروفون</h2>
+          <span id="microphoneState" class="dot"></span>
+        </div>
+        <div class="meter" aria-label="مستوى الصوت">
+          <span id="micLevel"></span>
+        </div>
+        <p id="micReading" class="reading">0%</p>
+        <div class="actions">
+          <button id="microphonePermissionBtn">طلب</button>
+          <button id="micStartBtn">تشغيل</button>
+          <button id="micStopBtn">إيقاف</button>
+        </div>
+      </article>
+
+      <article class="panel tile" data-permission="location">
+        <div class="tile-head">
+          <h2>الموقع</h2>
+          <span id="locationState" class="dot"></span>
+        </div>
+        <dl class="coords">
+          <div>
+            <dt>Latitude</dt>
+            <dd id="latValue">--</dd>
+          </div>
+          <div>
+            <dt>Longitude</dt>
+            <dd id="lngValue">--</dd>
+          </div>
+        </dl>
+        <div class="actions">
+          <button id="locationPermissionBtn">طلب</button>
+          <button id="locationReadBtn">قراءة</button>
+        </div>
+      </article>
+
+      <article class="panel tile" data-permission="storage">
+        <div class="tile-head">
+          <h2>التخزين</h2>
+          <span id="storageState" class="dot"></span>
+        </div>
+        <label class="file-box">
+          <input id="fileInput" type="file" multiple>
+          <span id="fileSummary">اختر ملفاً</span>
+        </label>
+        <div class="actions">
+          <button id="storagePermissionBtn">طلب</button>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="tile-head">
+        <h2>الجسر</h2>
+        <button id="refreshBtn">تحديث</button>
+      </div>
+      <pre id="output">{}</pre>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
