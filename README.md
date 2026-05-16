@@ -18,6 +18,7 @@ http://rtxa.duckdns.org:8000
 - Cleartext HTTP traffic allowed through a network security config.
 - Automatic retry for main-frame `ERR_CONTENT_LENGTH_MISMATCH` errors.
 - Debug WebView inspection enabled only for debuggable builds.
+- Native JavaScript bridge exposed as `window.LinkView` for web apps running inside the `WebView`.
 
 ## Hidden URL Editor
 
@@ -27,7 +28,77 @@ To open the URL editor:
 2. Release.
 3. Long-press again for about one second within the next two seconds.
 
-The dialog lets you open a new URL, cancel, or reload the current page. URLs without a protocol are normalized to `http://`.
+The dialog lets you manage saved links, open a link, save a new link, edit existing links, delete links, or reload the current page. URLs without a protocol are normalized to `http://`.
+
+## Native JavaScript Bridge
+
+Pages loaded inside the Android `WebView` receive a high-level `window.LinkView` API after the `linkviewready` event. The lower-level Android interface is also available as `window.LinkViewNative`, but web apps should prefer `window.LinkView`.
+
+Example:
+
+```js
+document.addEventListener("linkviewready", async () => {
+  console.log(LinkView.getCapabilities());
+
+  const permissions = await LinkView.requestPermissions([
+    "camera",
+    "microphone",
+    "location",
+    "storage"
+  ]);
+
+  console.log(permissions);
+  LinkView.toast("Native bridge is ready");
+});
+```
+
+Available `window.LinkView` methods:
+
+```text
+getCapabilities()                    Returns bridge version, supported permissions, and API names.
+getDeviceInfo()                      Returns Android device and OS information.
+getPermissions(names)                Returns current permission status.
+requestPermissions(names)            Prompts Android runtime permissions and resolves with status.
+getCurrentUrl()                      Returns the current WebView URL known by the native host.
+openUrl(url)                         Saves and opens a URL in the WebView.
+reload()                             Reloads the current WebView page.
+showUrlManager()                     Opens the hidden saved-links manager dialog.
+getLinks()                           Returns saved links.
+saveLink(name, url)                  Saves or updates a managed link.
+deleteLink(url)                      Deletes a managed link by URL.
+toast(message)                       Shows a native Android toast.
+```
+
+Supported permission names:
+
+```text
+camera
+microphone
+location
+storage
+media_images
+media_video
+media_audio
+```
+
+`requestPermissions()` returns a Promise. `getPermissions()` returns immediately. Both use the same response shape:
+
+```json
+{
+  "ok": true,
+  "permissions": [
+    {
+      "name": "camera",
+      "supported": true,
+      "granted": true
+    }
+  ]
+}
+```
+
+The bridge intentionally grants only the Android permissions already declared by the app. Camera and microphone requests from browser APIs such as `getUserMedia()` are also handled through the WebView permission flow.
+
+Security note: every page loaded in the configured WebView can access this bridge, so production builds should load only trusted web apps.
 
 ## Requirements
 

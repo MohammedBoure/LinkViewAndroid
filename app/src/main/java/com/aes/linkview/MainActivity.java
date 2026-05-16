@@ -26,6 +26,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.GeolocationPermissions;
+import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -46,6 +47,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class MainActivity extends Activity {
     private static final String DEFAULT_WEB_URL = "http://rtxa.duckdns.org:8000";
@@ -62,6 +64,7 @@ public class MainActivity extends Activity {
     private final Handler secretGestureHandler = new Handler(Looper.getMainLooper());
     private WebView webView;
     private String lastLoadingUrl;
+    private String currentWebUrl = DEFAULT_WEB_URL;
     private int mainFrameRetryCount;
     private int secretGestureStep;
     private long secondPressDeadline;
@@ -70,6 +73,8 @@ public class MainActivity extends Activity {
     private PermissionRequest pendingWebPermissionRequest;
     private String pendingGeolocationOrigin;
     private GeolocationPermissions.Callback pendingGeolocationCallback;
+    private String pendingJsPermissionCallbackId;
+    private List<String> pendingJsPermissionAliases;
     private boolean appPermissionRequestInFlight;
 
     @Override
@@ -221,6 +226,7 @@ public class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
+                currentWebUrl = url;
                 if (lastLoadingUrl == null || !lastLoadingUrl.equals(url)) {
                     lastLoadingUrl = url;
                     mainFrameRetryCount = 0;
@@ -232,6 +238,7 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 Log.d(TAG, "Finished " + url + " title=" + view.getTitle());
+                injectLinkViewApi(view);
                 view.evaluateJavascript(
                         "document.body ? document.body.innerText.slice(0, 200) : 'NO_BODY'",
                         text -> Log.d(TAG, "Body preview: " + text)
@@ -263,6 +270,7 @@ public class MainActivity extends Activity {
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
         settings.setGeolocationEnabled(true);
 
+        webView.addJavascriptInterface(new LinkViewBridge(), "LinkViewNative");
         webView.setLongClickable(true);
         webView.setOnLongClickListener(view -> true);
         webView.setOnTouchListener((view, event) -> {
@@ -298,14 +306,19 @@ public class MainActivity extends Activity {
         appPermissionRequestInFlight = false;
         resolvePendingWebPermissionRequest();
         resolvePendingGeolocationRequest();
+        resolvePendingJsPermissionRequest();
     }
 
     private void requestAppPermissions() {
+        requestRuntimePermissions(appRuntimePermissions());
+    }
+
+    private void requestRuntimePermissions(List<String> permissions) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || appPermissionRequestInFlight) {
             return;
         }
 
-        List<String> missingPermissions = missingPermissions(appRuntimePermissions());
+        List<String> missingPermissions = missingPermissions(permissions);
         if (!missingPermissions.isEmpty()) {
             appPermissionRequestInFlight = true;
             requestPermissions(
@@ -428,6 +441,310 @@ public class MainActivity extends Activity {
         pendingGeolocationCallback = null;
         pendingGeolocationOrigin = null;
         callback.invoke(origin, hasLocationPermission(), false);
+    }
+
+    private void handleJsPermissionRequest(String rawAliases, String callbackId) {
+        if (callbackId == null || callbackId.trim().isEmpty()) {
+            return;
+        }
+        if (pendingJsPermissionCallbackId != null) {
+            sendJsBridgeCallback(callbackId, bridgeError("permission_request_in_progress"));
+            return;
+        }
+
+        List<String> aliases = parsePermissionAliases(rawAliases);
+        List<String> androidPermissions = androidPermissionsForAliases(aliases);
+        List<String> missingPermissions = missingPermissions(androidPermissions);
+        if (missingPermissions.isEmpty()) {
+            sendJsBridgeCallback(callbackId, permissionStatusJson(aliases));
+            return;
+        }
+
+        pendingJsPermissionCallbackId = callbackId;
+        pendingJsPermissionAliases = aliases;
+        requestRuntimePermissions(androidPermissions);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || !appPermissionRequestInFlight) {
+            resolvePendingJsPermissionRequest();
+        }
+    }
+
+    private void resolvePendingJsPermissionRequest() {
+        if (pendingJsPermissionCallbackId == null) {
+            return;
+        }
+
+        String callbackId = pendingJsPermissionCallbackId;
+        List<String> aliases = pendingJsPermissionAliases;
+        pendingJsPermissionCallbackId = null;
+        pendingJsPermissionAliases = null;
+        sendJsBridgeCallback(callbackId, permissionStatusJson(aliases));
+    }
+
+    private List<String> parsePermissionAliases(String rawAliases) {
+        List<String> aliases = new ArrayList<>();
+        if (rawAliases == null || rawAliases.trim().isEmpty()) {
+            aliases.addAll(supportedPermissionAliases());
+            return aliases;
+        }
+
+        try {
+            JSONArray array = new JSONArray(rawAliases);
+            for (int index = 0; index < array.length(); index++) {
+                addPermissionAlias(aliases, array.optString(index, ""));
+            }
+        } catch (JSONException exception) {
+            String[] parts = rawAliases.split(",");
+            for (String part : parts) {
+                addPermissionAlias(aliases, part);
+            }
+        }
+
+        if (aliases.isEmpty()) {
+            aliases.addAll(supportedPermissionAliases());
+        }
+        return aliases;
+    }
+
+    private void addPermissionAlias(List<String> aliases, String alias) {
+        String normalizedAlias = normalizePermissionAlias(alias);
+        if (!normalizedAlias.isEmpty() && !aliases.contains(normalizedAlias)) {
+            aliases.add(normalizedAlias);
+        }
+    }
+
+    private String normalizePermissionAlias(String alias) {
+        if (alias == null) {
+            return "";
+        }
+        String normalizedAlias = alias.trim().toLowerCase(Locale.US)
+                .replace('-', '_')
+                .replace(' ', '_');
+        if ("mic".equals(normalizedAlias) || "audio".equals(normalizedAlias)) {
+            return "microphone";
+        }
+        if ("gps".equals(normalizedAlias) || "geolocation".equals(normalizedAlias)) {
+            return "location";
+        }
+        if ("files".equals(normalizedAlias)) {
+            return "storage";
+        }
+        return normalizedAlias;
+    }
+
+    private List<String> supportedPermissionAliases() {
+        List<String> aliases = new ArrayList<>();
+        aliases.add("camera");
+        aliases.add("microphone");
+        aliases.add("location");
+        aliases.add("storage");
+        aliases.add("media_images");
+        aliases.add("media_video");
+        aliases.add("media_audio");
+        return aliases;
+    }
+
+    private List<String> androidPermissionsForAliases(List<String> aliases) {
+        List<String> permissions = new ArrayList<>();
+        for (String alias : aliases) {
+            for (String permission : androidPermissionsForAlias(alias)) {
+                addPermissionIfMissing(permissions, permission);
+            }
+        }
+        return permissions;
+    }
+
+    private List<String> androidPermissionsForAlias(String alias) {
+        List<String> permissions = new ArrayList<>();
+        switch (alias) {
+            case "camera":
+                permissions.add(Manifest.permission.CAMERA);
+                break;
+            case "microphone":
+                permissions.add(Manifest.permission.RECORD_AUDIO);
+                break;
+            case "location":
+                permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
+                permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+                break;
+            case "storage":
+                addStoragePermissions(permissions);
+                break;
+            case "media_images":
+                addMediaPermission(permissions, Manifest.permission.READ_MEDIA_IMAGES);
+                break;
+            case "media_video":
+                addMediaPermission(permissions, Manifest.permission.READ_MEDIA_VIDEO);
+                break;
+            case "media_audio":
+                addMediaPermission(permissions, Manifest.permission.READ_MEDIA_AUDIO);
+                break;
+            default:
+                break;
+        }
+        return permissions;
+    }
+
+    private void addStoragePermissions(List<String> permissions) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.READ_MEDIA_IMAGES);
+            permissions.add(Manifest.permission.READ_MEDIA_VIDEO);
+            permissions.add(Manifest.permission.READ_MEDIA_AUDIO);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                permissions.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED);
+            }
+        } else {
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            }
+        }
+    }
+
+    private void addMediaPermission(List<String> permissions, String mediaPermission) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(mediaPermission);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                    && Manifest.permission.READ_MEDIA_IMAGES.equals(mediaPermission)) {
+                permissions.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED);
+            }
+        } else {
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+        }
+    }
+
+    private JSONObject permissionStatusJson(List<String> aliases) {
+        JSONObject result = new JSONObject();
+        JSONArray permissions = new JSONArray();
+        try {
+            result.put("ok", true);
+            result.put("permissions", permissions);
+            for (String alias : aliases) {
+                JSONObject permission = new JSONObject();
+                permission.put("name", alias);
+                permission.put("supported", isSupportedPermissionAlias(alias));
+                permission.put("granted", isPermissionAliasGranted(alias));
+                permissions.put(permission);
+            }
+        } catch (JSONException exception) {
+            Log.w(TAG, "Could not build permission status", exception);
+        }
+        return result;
+    }
+
+    private boolean isSupportedPermissionAlias(String alias) {
+        return supportedPermissionAliases().contains(alias);
+    }
+
+    private boolean isPermissionAliasGranted(String alias) {
+        List<String> permissions = androidPermissionsForAlias(alias);
+        if (permissions.isEmpty()) {
+            return false;
+        }
+        if ("location".equals(alias)) {
+            return hasLocationPermission();
+        }
+        for (String permission : permissions) {
+            if (!hasPermission(permission)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void injectLinkViewApi(WebView view) {
+        String script = "(function(){"
+                + "if(window.LinkView&&window.LinkView.__nativeBridgeVersion>=1){return;}"
+                + "var callbacks={};"
+                + "var nextId=1;"
+                + "function parse(value,fallback){try{return JSON.parse(value);}catch(e){return fallback;}}"
+                + "function safeJson(action,fallback){"
+                + "try{return parse(action(),fallback||{});}"
+                + "catch(e){return {ok:false,error:String(e)};}"
+                + "}"
+                + "function safeVoid(action){"
+                + "try{action();return {ok:true};}"
+                + "catch(e){return {ok:false,error:String(e)};}"
+                + "}"
+                + "function requestNativePermissions(permissions){"
+                + "return new Promise(function(resolve,reject){"
+                + "var id='cb_'+Date.now()+'_'+(nextId++);"
+                + "callbacks[id]={resolve:resolve,reject:reject};"
+                + "try{LinkViewNative.requestPermissions(JSON.stringify(permissions||[]),id);}"
+                + "catch(e){delete callbacks[id];reject({ok:false,error:String(e)});}"
+                + "});"
+                + "}"
+                + "window.__LinkViewNativeCallback=function(id,payload){"
+                + "var callback=callbacks[id];"
+                + "if(!callback){return;}"
+                + "delete callbacks[id];"
+                + "if(payload&&payload.ok===false){callback.reject(payload);}else{callback.resolve(payload);}"
+                + "};"
+                + "window.LinkView={"
+                + "__nativeBridgeVersion:1,"
+                + "isNative:true,"
+                + "getCapabilities:function(){return safeJson(function(){return LinkViewNative.getCapabilities();},{});},"
+                + "getDeviceInfo:function(){return safeJson(function(){return LinkViewNative.getDeviceInfo();},{});},"
+                + "getPermissions:function(permissions){return safeJson(function(){return LinkViewNative.getPermissionStatus(JSON.stringify(permissions||[]));},{});},"
+                + "requestPermissions:function(permissions){return requestNativePermissions(permissions);},"
+                + "getCurrentUrl:function(){return LinkViewNative.getCurrentUrl();},"
+                + "openUrl:function(url){return safeVoid(function(){LinkViewNative.openUrl(String(url||''));});},"
+                + "reload:function(){return safeVoid(function(){LinkViewNative.reload();});},"
+                + "showUrlManager:function(){return safeVoid(function(){LinkViewNative.showUrlManager();});},"
+                + "getLinks:function(){return safeJson(function(){return LinkViewNative.getLinks();},[]);},"
+                + "saveLink:function(name,url){return safeJson(function(){return LinkViewNative.saveLink(String(name||''),String(url||''));},{});},"
+                + "deleteLink:function(url){return safeJson(function(){return LinkViewNative.deleteLink(String(url||''));},{});},"
+                + "toast:function(message){return safeVoid(function(){LinkViewNative.toast(String(message||''));});}"
+                + "};"
+                + "try{document.dispatchEvent(new CustomEvent('linkviewready',{detail:window.LinkView.getCapabilities()}));}"
+                + "catch(e){}"
+                + "})();";
+        view.evaluateJavascript(script, null);
+    }
+
+    private void sendJsBridgeCallback(String callbackId, JSONObject payload) {
+        if (webView == null) {
+            return;
+        }
+
+        runOnUiThread(() -> {
+            if (webView != null) {
+                String script = "window.__LinkViewNativeCallback&&window.__LinkViewNativeCallback("
+                        + JSONObject.quote(callbackId) + "," + payload.toString() + ");";
+                webView.evaluateJavascript(script, null);
+            }
+        });
+    }
+
+    private JSONObject bridgeError(String error) {
+        JSONObject result = new JSONObject();
+        try {
+            result.put("ok", false);
+            result.put("error", error);
+        } catch (JSONException exception) {
+            Log.w(TAG, "Could not build bridge error", exception);
+        }
+        return result;
+    }
+
+    private JSONObject bridgeSuccess() {
+        JSONObject result = new JSONObject();
+        try {
+            result.put("ok", true);
+        } catch (JSONException exception) {
+            Log.w(TAG, "Could not build bridge success", exception);
+        }
+        return result;
+    }
+
+    private JSONObject linkEntryJson(LinkEntry link) {
+        JSONObject object = new JSONObject();
+        try {
+            object.put("name", link.name);
+            object.put("url", link.url);
+        } catch (JSONException exception) {
+            Log.w(TAG, "Could not build link JSON", exception);
+        }
+        return object;
     }
 
     private void showUrlEditor() {
@@ -620,6 +937,7 @@ public class MainActivity extends Activity {
 
     private void openUrl(String value) {
         String url = normalizeUrl(value);
+        currentWebUrl = url;
         preferences().edit().putString(PREF_URL, url).apply();
         webView.loadUrl(url);
     }
@@ -968,6 +1286,136 @@ public class MainActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private class LinkViewBridge {
+        @JavascriptInterface
+        public String getCapabilities() {
+            JSONObject result = new JSONObject();
+            JSONArray permissions = new JSONArray();
+            JSONArray apis = new JSONArray();
+            try {
+                result.put("ok", true);
+                result.put("name", "LinkView");
+                result.put("bridgeVersion", 1);
+                result.put("androidSdk", Build.VERSION.SDK_INT);
+                for (String alias : supportedPermissionAliases()) {
+                    permissions.put(alias);
+                }
+                result.put("permissions", permissions);
+                apis.put("getCapabilities");
+                apis.put("getDeviceInfo");
+                apis.put("getPermissions");
+                apis.put("requestPermissions");
+                apis.put("getCurrentUrl");
+                apis.put("openUrl");
+                apis.put("reload");
+                apis.put("showUrlManager");
+                apis.put("getLinks");
+                apis.put("saveLink");
+                apis.put("deleteLink");
+                apis.put("toast");
+                result.put("apis", apis);
+            } catch (JSONException exception) {
+                Log.w(TAG, "Could not build bridge capabilities", exception);
+            }
+            return result.toString();
+        }
+
+        @JavascriptInterface
+        public String getDeviceInfo() {
+            JSONObject result = new JSONObject();
+            try {
+                result.put("ok", true);
+                result.put("manufacturer", Build.MANUFACTURER);
+                result.put("brand", Build.BRAND);
+                result.put("model", Build.MODEL);
+                result.put("device", Build.DEVICE);
+                result.put("androidSdk", Build.VERSION.SDK_INT);
+                result.put("androidRelease", Build.VERSION.RELEASE);
+            } catch (JSONException exception) {
+                Log.w(TAG, "Could not build device info", exception);
+            }
+            return result.toString();
+        }
+
+        @JavascriptInterface
+        public String getPermissionStatus(String rawAliases) {
+            return permissionStatusJson(parsePermissionAliases(rawAliases)).toString();
+        }
+
+        @JavascriptInterface
+        public void requestPermissions(String rawAliases, String callbackId) {
+            runOnUiThread(() -> handleJsPermissionRequest(rawAliases, callbackId));
+        }
+
+        @JavascriptInterface
+        public String getCurrentUrl() {
+            return currentWebUrl != null ? currentWebUrl : currentSavedUrl();
+        }
+
+        @JavascriptInterface
+        public void openUrl(String url) {
+            runOnUiThread(() -> MainActivity.this.openUrl(url));
+        }
+
+        @JavascriptInterface
+        public void reload() {
+            runOnUiThread(() -> {
+                if (webView != null) {
+                    webView.reload();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void showUrlManager() {
+            runOnUiThread(MainActivity.this::showUrlEditor);
+        }
+
+        @JavascriptInterface
+        public String getLinks() {
+            ensureManagedLinksSeeded();
+            JSONArray result = new JSONArray();
+            for (LinkEntry link : loadManagedLinks()) {
+                result.put(linkEntryJson(link));
+            }
+            return result.toString();
+        }
+
+        @JavascriptInterface
+        public String saveLink(String name, String url) {
+            String normalizedUrl = normalizeUrl(url);
+            String normalizedName = name == null ? "" : name.trim();
+            if (normalizedName.isEmpty()) {
+                normalizedName = suggestLinkName(normalizedUrl);
+            }
+            LinkEntry link = new LinkEntry(normalizedName, normalizedUrl);
+            upsertManagedLink(link);
+
+            JSONObject result = bridgeSuccess();
+            try {
+                result.put("link", linkEntryJson(link));
+            } catch (JSONException exception) {
+                Log.w(TAG, "Could not build save link response", exception);
+            }
+            return result.toString();
+        }
+
+        @JavascriptInterface
+        public String deleteLink(String url) {
+            deleteManagedLink(url);
+            return bridgeSuccess().toString();
+        }
+
+        @JavascriptInterface
+        public void toast(String message) {
+            runOnUiThread(() -> Toast.makeText(
+                    MainActivity.this,
+                    message == null ? "" : message,
+                    Toast.LENGTH_SHORT
+            ).show());
+        }
     }
 
     private static class LinkEntry {
